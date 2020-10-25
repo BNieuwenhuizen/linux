@@ -203,6 +203,7 @@ static int amdgpufb_create(struct drm_fb_helper *helper,
 	struct drm_framebuffer *fb = NULL;
 	struct drm_mode_fb_cmd2 mode_cmd;
 	struct drm_gem_object *gobj = NULL;
+	struct drm_gem_object *fb_objs[4] = {NULL, };
 	struct amdgpu_bo *abo = NULL;
 	int ret;
 	unsigned long tmp;
@@ -232,8 +233,9 @@ static int amdgpufb_create(struct drm_fb_helper *helper,
 		goto out;
 	}
 
+	fb_objs[0] = gobj;
 	ret = amdgpu_display_framebuffer_init(adev_to_drm(adev), &rfbdev->rfb,
-					      &mode_cmd, gobj);
+					      &mode_cmd, fb_objs);
 	if (ret) {
 		DRM_ERROR("failed to initialize framebuffer %d\n", ret);
 		goto out;

@@ -610,7 +610,7 @@ int amdgpu_display_get_crtc_scanoutpos(struct drm_device *dev,
 int amdgpu_display_framebuffer_init(struct drm_device *dev,
 				    struct amdgpu_framebuffer *rfb,
 				    const struct drm_mode_fb_cmd2 *mode_cmd,
-				    struct drm_gem_object *obj);
+				    struct drm_gem_object **objs);
 
 int amdgpufb_remove(struct drm_device *dev, struct drm_framebuffer *fb);
 

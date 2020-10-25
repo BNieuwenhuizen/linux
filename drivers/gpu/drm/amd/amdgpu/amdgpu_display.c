@@ -690,17 +690,52 @@ static int amdgpu_display_get_fb_info(const struct amdgpu_framebuffer *amdgpu_fb
 	return r;
 }
 
+/* Initialize a newly created framebuffer object.
+ * 
+ * \param dev Device for which to initialize a framebuffer.
+ * \param rfb Framebuffer to initialize.
+ * \param mode_cmd parameters to initialize the framebuffer with.
+ * \param objs Array of 4 gem objects pointers whose gem objects will store the
+ *        image for this framebuffer.
+ *
+ * \return An error, or 0 on success.
+ */
 int amdgpu_display_framebuffer_init(struct drm_device *dev,
 				    struct amdgpu_framebuffer *rfb,
 				    const struct drm_mode_fb_cmd2 *mode_cmd,
-				    struct drm_gem_object *obj)
+				    struct drm_gem_object **objs)
 {
 	int ret;
-	rfb->base.obj[0] = obj;
+	int i;
 	drm_helper_mode_fill_fb_struct(dev, &rfb->base, mode_cmd);
 	ret = drm_framebuffer_init(dev, &rfb->base, &amdgpu_fb_funcs);
 	if (ret)
 		goto fail;
+
+	for (i = 0; i < rfb->base.format->num_planes; ++i) {
+		if (!objs[i]) {
+			DRM_DEBUG_KMS("Missing a bo for plane %d\n", i);
+			ret = -EINVAL;
+			goto fail;
+		}
+
+		if (objs[i] != objs[0]) {
+			DRM_DEBUG_KMS("The bo for plane %d should match "
+			              "the bo for plane 0\n", i);
+			ret = -EINVAL;
+			goto fail;
+		}
+
+		rfb->base.obj[i] = objs[i];
+	}
+
+	for (i = rfb->base.format->num_planes; i < 4; ++i) {
+		if (objs[i]) {
+			DRM_DEBUG_KMS("Extra bo for plane %d\n", i);
+			ret = -EINVAL;
+			goto fail;
+		}
+	}
 
 	ret = amdgpu_display_get_fb_info(rfb, &rfb->tiling_flags, &rfb->tmz_surface);
 	if (ret)
@@ -716,7 +751,8 @@ int amdgpu_display_framebuffer_init(struct drm_device *dev,
 	return 0;
 
 fail:
-	rfb->base.obj[0] = NULL;
+	for (i = 0; i < 4; ++i)
+		rfb->base.obj[i] = NULL;
 	return ret;
 }
 
@@ -725,37 +761,45 @@ amdgpu_display_user_framebuffer_create(struct drm_device *dev,
 				       struct drm_file *file_priv,
 				       const struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	struct drm_gem_object *obj;
-	struct amdgpu_framebuffer *amdgpu_fb;
-	int ret;
+	struct drm_gem_object *objs[4] = {NULL, };
+	struct amdgpu_framebuffer *amdgpu_fb = NULL;
+	int ret, i;
 
-	obj = drm_gem_object_lookup(file_priv, mode_cmd->handles[0]);
-	if (obj ==  NULL) {
-		dev_err(&dev->pdev->dev, "No GEM object associated to handle 0x%08X, "
-			"can't create framebuffer\n", mode_cmd->handles[0]);
-		return ERR_PTR(-ENOENT);
-	}
+	for (i = 0; i < 4 && mode_cmd->handles[i]; ++i) {
+		objs[i] = drm_gem_object_lookup(file_priv, mode_cmd->handles[i]);
+		if (objs[i] ==  NULL) {
+			dev_err(&dev->pdev->dev, "No GEM object associated to handle 0x%08X, "
+				"can't create framebuffer\n", mode_cmd->handles[i]);
+			ret = -ENOENT;
+			goto fail;
+		}
 
-	/* Handle is imported dma-buf, so cannot be migrated to VRAM for scanout */
-	if (obj->import_attach) {
-		DRM_DEBUG_KMS("Cannot create framebuffer from imported dma_buf\n");
-		return ERR_PTR(-EINVAL);
+		/* Handle is imported dma-buf, so cannot be migrated to VRAM for scanout */
+		if (objs[i]->import_attach) {
+			DRM_DEBUG_KMS("Cannot create framebuffer from imported dma_buf\n");
+			ret = -EINVAL;
+			goto fail;
+		}
 	}
 
 	amdgpu_fb = kzalloc(sizeof(*amdgpu_fb), GFP_KERNEL);
 	if (amdgpu_fb == NULL) {
-		drm_gem_object_put(obj);
-		return ERR_PTR(-ENOMEM);
+		ret = -ENOMEM;
+		goto fail;
 	}
 
-	ret = amdgpu_display_framebuffer_init(dev, amdgpu_fb, mode_cmd, obj);
-	if (ret) {
-		kfree(amdgpu_fb);
-		drm_gem_object_put(obj);
-		return ERR_PTR(ret);
-	}
+	ret = amdgpu_display_framebuffer_init(dev, amdgpu_fb, mode_cmd, objs);
+	if (ret)
+		goto fail;
 
 	return &amdgpu_fb->base;
+
+fail:
+	kfree(amdgpu_fb);
+	for (i = 0; i < 4; ++i)
+		if (objs[i])
+			drm_gem_object_put(objs[i]);
+	return ERR_PTR(ret);
 }
 
 const struct drm_mode_config_funcs amdgpu_mode_funcs = {
