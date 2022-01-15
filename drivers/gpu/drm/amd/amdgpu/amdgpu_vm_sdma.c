@@ -48,6 +48,19 @@ static int amdgpu_vm_sdma_map_table(struct amdgpu_bo_vm *table)
 }
 
 /**
+ * amdgpu_vm_sdma_reset - free & reset internal params members
+ *
+ * @p: params to free & reset
+ */
+static void amdgpu_vm_sdma_reset(struct amdgpu_vm_update_params *p)
+{
+	if (p->job) {
+		amdgpu_job_free(p->job);
+		p->job = NULL;
+	}
+}
+
+/**
  * amdgpu_vm_sdma_prepare - prepare SDMA command submission
  *
  * @p: see amdgpu_vm_update_params definition
@@ -61,23 +74,26 @@ static int amdgpu_vm_sdma_prepare(struct amdgpu_vm_update_params *p,
 				  struct dma_resv *resv,
 				  enum amdgpu_sync_mode sync_mode)
 {
-	enum amdgpu_ib_pool_type pool = p->immediate ? AMDGPU_IB_POOL_IMMEDIATE
-		: AMDGPU_IB_POOL_DELAYED;
-	unsigned int ndw = AMDGPU_VM_SDMA_MIN_NUM_DW;
 	int r;
 
-	r = amdgpu_job_alloc_with_ib(p->adev, ndw * 4, pool, &p->job);
-	if (r)
-		return r;
+	if (!p->job) {
+		enum amdgpu_ib_pool_type pool = p->immediate ? AMDGPU_IB_POOL_IMMEDIATE
+			: AMDGPU_IB_POOL_DELAYED;
+		unsigned int ndw = AMDGPU_VM_SDMA_MIN_NUM_DW;
 
-	p->num_dw_left = ndw;
+		r = amdgpu_job_alloc_with_ib(p->adev, ndw * 4, pool, &p->job);
+		if (r)
+			return r;
+
+		p->num_dw_left = ndw;
+	}
 
 	if (!resv)
 		return 0;
 
 	r = amdgpu_sync_resv(p->adev, &p->job->sync, resv, sync_mode, p->vm);
 	if (r)
-		amdgpu_job_free(p->job);
+		amdgpu_vm_sdma_reset(p);
 
 	return r;
 }
@@ -122,10 +138,12 @@ static int amdgpu_vm_sdma_commit(struct amdgpu_vm_update_params *p,
 	if (fence && !p->immediate)
 		swap(*fence, f);
 	dma_fence_put(f);
+
+	p->job = NULL;
 	return 0;
 
 error:
-	amdgpu_job_free(p->job);
+	amdgpu_vm_sdma_reset(p);
 	return r;
 }
 
@@ -215,7 +233,7 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
 	/* Wait for PD/PT moves to be completed */
 	r = amdgpu_sync_fence(&p->job->sync, bo->tbo.moving);
 	if (r) {
-		amdgpu_job_free(p->job);
+		amdgpu_vm_sdma_reset(p);
 		return r;
 	}
 
