@@ -1819,7 +1819,7 @@ int amdgpu_vm_bo_update_mapping(struct amdgpu_device *adev,
 
 	r = vm->update_funcs->commit(params, fence);
 
-	if (!r)
+	if (!r && !params->batched)
 		r = vm->update_funcs->finalize(params);
 
 	if (table_freed)
@@ -2225,6 +2225,45 @@ int amdgpu_vm_clear_freed(struct amdgpu_device *adev,
 
 }
 
+
+static int amdgpu_vm_update_moved(struct amdgpu_device *adev,
+				  struct amdgpu_vm *vm)
+{
+	struct amdgpu_bo_va *bo_va, *tmp;
+	struct amdgpu_vm_update_params params;
+	int r;
+
+	memset(&params, 0, sizeof(params));
+	params.batched = true;
+
+	/* TODO: is the list guaranteed to be the same between first and second
+	 *  iterations? I'm not really sure about locking. */
+	list_for_each_entry_safe(bo_va, tmp, &vm->moved, base.vm_status) {
+		r = amdgpu_vm_bo_update_a(adev, bo_va, &params, false, NULL);
+		if (r)
+			break;
+	}
+
+	if (!r)
+		r = vm->update_funcs->finalize(&params);
+
+	if (!r) {
+		list_for_each_entry_safe(bo_va, tmp, &vm->moved, base.vm_status) {
+			amdgpu_vm_bo_update_b(adev, bo_va, false, NULL);
+		}
+		return 0;
+	}
+
+	list_for_each_entry_safe(bo_va, tmp, &vm->moved, base.vm_status) {
+		/* Per VM BOs never need to bo cleared in the page tables */
+		r = amdgpu_vm_bo_update(adev, bo_va, false, NULL);
+		if (r)
+			return r;
+	}
+
+	return 0;
+}
+
 /**
  * amdgpu_vm_handle_moved - handle moved BOs in the PT
  *
@@ -2241,17 +2280,14 @@ int amdgpu_vm_clear_freed(struct amdgpu_device *adev,
 int amdgpu_vm_handle_moved(struct amdgpu_device *adev,
 			   struct amdgpu_vm *vm)
 {
-	struct amdgpu_bo_va *bo_va, *tmp;
+	struct amdgpu_bo_va *bo_va;
 	struct dma_resv *resv;
 	bool clear;
 	int r;
 
-	list_for_each_entry_safe(bo_va, tmp, &vm->moved, base.vm_status) {
-		/* Per VM BOs never need to bo cleared in the page tables */
-		r = amdgpu_vm_bo_update(adev, bo_va, false, NULL);
-		if (r)
-			return r;
-	}
+	r = amdgpu_vm_update_moved(adev, vm);
+	if (r)
+		return r;
 
 	spin_lock(&vm->invalidated_lock);
 	while (!list_empty(&vm->invalidated)) {

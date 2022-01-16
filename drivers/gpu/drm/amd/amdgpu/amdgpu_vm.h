@@ -230,6 +230,12 @@ struct amdgpu_vm_update_params {
 	 * @table_freed: return true if page table is freed when updating
 	 */
 	bool table_freed;
+
+	/**
+	 * @batched: Whether the intent is to do multiple updates and a single
+	 *           finalize call to enable the batching of command buffers.
+	 */
+	bool batched;
 };
 
 struct amdgpu_vm_update_funcs {
