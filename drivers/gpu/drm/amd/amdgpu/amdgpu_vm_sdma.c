@@ -75,7 +75,11 @@ static int amdgpu_vm_sdma_prepare(struct amdgpu_vm_update_params *p,
 	if (!resv)
 		return 0;
 
-	return amdgpu_sync_resv(p->adev, &p->job->sync, resv, sync_mode, p->vm);
+	r = amdgpu_sync_resv(p->adev, &p->job->sync, resv, sync_mode, p->vm);
+	if (r)
+		amdgpu_job_free(p->job);
+
+	return r;
 }
 
 /**
@@ -210,8 +214,10 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
 
 	/* Wait for PD/PT moves to be completed */
 	r = amdgpu_sync_fence(&p->job->sync, bo->tbo.moving);
-	if (r)
+	if (r) {
+		amdgpu_job_free(p->job);
 		return r;
+	}
 
 	do {
 		ndw = p->num_dw_left;
