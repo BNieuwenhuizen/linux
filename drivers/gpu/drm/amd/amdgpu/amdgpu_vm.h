@@ -241,6 +241,7 @@ struct amdgpu_vm_update_funcs {
 		      unsigned count, uint32_t incr, uint64_t flags);
 	int (*commit)(struct amdgpu_vm_update_params *p,
 		      struct dma_fence **fence);
+	int (*finalize)(struct amdgpu_vm_update_params *p);
 };
 
 struct amdgpu_vm {

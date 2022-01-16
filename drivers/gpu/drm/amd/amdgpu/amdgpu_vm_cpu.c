@@ -97,16 +97,23 @@ static int amdgpu_vm_cpu_update(struct amdgpu_vm_update_params *p,
 	return 0;
 }
 
+
+static int amdgpu_vm_cpu_commit(struct amdgpu_vm_update_params *p,
+				struct dma_fence **fence)
+{
+	/* Do nothing. Everything will be done in finalize() */
+	return 0;
+}
+
 /**
- * amdgpu_vm_cpu_commit - commit page table update to the HW
+ * amdgpu_vm_cpu_finalize - commit page table update to the HW
  *
  * @p: see amdgpu_vm_update_params definition
  * @fence: unused
  *
  * Make sure that the hardware sees the page table updates.
  */
-static int amdgpu_vm_cpu_commit(struct amdgpu_vm_update_params *p,
-				struct dma_fence **fence)
+static int amdgpu_vm_cpu_finalize(struct amdgpu_vm_update_params *p)
 {
 	/* Flush HDP */
 	mb();
@@ -118,5 +125,6 @@ const struct amdgpu_vm_update_funcs amdgpu_vm_cpu_funcs = {
 	.map_table = amdgpu_vm_cpu_map_table,
 	.prepare = amdgpu_vm_cpu_prepare,
 	.update = amdgpu_vm_cpu_update,
-	.commit = amdgpu_vm_cpu_commit
+	.commit = amdgpu_vm_cpu_commit,
+	.finalize = amdgpu_vm_cpu_finalize
 };

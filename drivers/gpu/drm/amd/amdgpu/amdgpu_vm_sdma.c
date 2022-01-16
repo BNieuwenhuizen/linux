@@ -281,9 +281,15 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
 	return 0;
 }
 
+static int amdgpu_vm_sdma_finalize(struct amdgpu_vm_update_params *p)
+{
+	return 0;
+}
+
 const struct amdgpu_vm_update_funcs amdgpu_vm_sdma_funcs = {
 	.map_table = amdgpu_vm_sdma_map_table,
 	.prepare = amdgpu_vm_sdma_prepare,
 	.update = amdgpu_vm_sdma_update,
-	.commit = amdgpu_vm_sdma_commit
+	.commit = amdgpu_vm_sdma_commit,
+	.finalize = amdgpu_vm_sdma_finalize,
 };

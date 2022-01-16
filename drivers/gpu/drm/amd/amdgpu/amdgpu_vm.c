@@ -902,6 +902,10 @@ static int amdgpu_vm_clear_bo(struct amdgpu_device *adev,
 	}
 
 	r = vm->update_funcs->commit(&params, NULL);
+	
+	if (!r)
+		r = vm->update_funcs->finalize(&params);
+
 exit:
 	drm_dev_exit(idx);
 	return r;
@@ -1423,6 +1427,11 @@ int amdgpu_vm_update_pdes(struct amdgpu_device *adev,
 	r = vm->update_funcs->commit(&params, &vm->last_update);
 	if (r)
 		goto error;
+
+	r = vm->update_funcs->finalize(&params);
+	if (r)
+		goto error;
+
 	drm_dev_exit(idx);
 	return 0;
 
@@ -1808,6 +1817,9 @@ int amdgpu_vm_bo_update_mapping(struct amdgpu_device *adev,
 	}
 
 	r = vm->update_funcs->commit(&params, fence);
+
+	if (!r)
+		r = vm->update_funcs->finalize(&params);
 
 	if (table_freed)
 		*table_freed = *table_freed || params.table_freed;
