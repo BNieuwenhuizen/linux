@@ -236,6 +236,11 @@ struct amdgpu_vm_update_params {
 	 *           finalize call to enable the batching of command buffers.
 	 */
 	bool batched;
+
+	struct dma_fence ***out_fences;
+
+	uint32_t num_out_fences;
+	uint32_t out_fences_capacity;
 };
 
 struct amdgpu_vm_update_funcs {

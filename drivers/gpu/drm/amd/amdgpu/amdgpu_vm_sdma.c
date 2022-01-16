@@ -58,6 +58,36 @@ static void amdgpu_vm_sdma_reset(struct amdgpu_vm_update_params *p)
 		amdgpu_job_free(p->job);
 		p->job = NULL;
 	}
+
+	kfree(p->out_fences);
+	p->num_out_fences = 0;
+	p->out_fences_capacity = 0;
+}
+
+static int amdgpu_vm_sdma_record_fence(struct amdgpu_vm_update_params *p,
+				       struct dma_fence **fence)
+{
+	if (p->num_out_fences >= p->out_fences_capacity) {
+		uint32_t new_capacity = max((uint32_t)8, p->out_fences_capacity * 2);
+		struct dma_fence ***fences;
+
+		/* The size of this is effectively limited to be fairly small,
+		 * as the IB size forces flushes. */
+		fences = kmalloc(new_capacity * sizeof(*fences), GFP_KERNEL);
+		if (!fences) {
+			amdgpu_vm_sdma_reset(p);
+			return -ENOMEM;
+		}
+
+		memcpy(fences, p->out_fences, p->num_out_fences * sizeof(*fences));
+		kfree(p->out_fences);
+
+		p->out_fences = fences;
+		p->out_fences_capacity = new_capacity;
+	}
+
+	p->out_fences[p->num_out_fences++] = fence;
+	return 0;
 }
 
 /**
@@ -107,14 +137,14 @@ static int amdgpu_vm_sdma_prepare(struct amdgpu_vm_update_params *p,
  * Returns:
  * Negativ errno, 0 for success.
  */
-static int amdgpu_vm_sdma_commit(struct amdgpu_vm_update_params *p,
-				 struct dma_fence **fence)
+static int amdgpu_vm_sdma_commit(struct amdgpu_vm_update_params *p)
 {
 	struct amdgpu_ib *ib = p->job->ibs;
 	struct drm_sched_entity *entity;
 	struct amdgpu_ring *ring;
 	struct dma_fence *f;
 	int r;
+	uint32_t i;
 
 	entity = p->immediate ? &p->vm->immediate : &p->vm->delayed;
 	ring = container_of(entity->rq->sched, struct amdgpu_ring, sched);
@@ -135,8 +165,14 @@ static int amdgpu_vm_sdma_commit(struct amdgpu_vm_update_params *p,
 		amdgpu_bo_fence(p->vm->root.bo, f, true);
 	}
 
-	if (fence && !p->immediate)
-		swap(*fence, f);
+	if (!p->immediate) {
+		for (i = 0; i < p->num_out_fences; ++i) {
+			struct dma_fence *tmp = dma_fence_get(f);
+			swap(*p->out_fences[i], f);
+			dma_fence_put(tmp);
+		}
+	}
+	p->num_out_fences = 0;
 	dma_fence_put(f);
 
 	p->job = NULL;
@@ -242,7 +278,7 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
 		ndw -= p->job->ibs->length_dw;
 
 		if (ndw < 32) {
-			r = amdgpu_vm_sdma_commit(p, NULL);
+			r = amdgpu_vm_sdma_commit(p);
 			if (r)
 				return r;
 
@@ -301,6 +337,9 @@ static int amdgpu_vm_sdma_update(struct amdgpu_vm_update_params *p,
 
 static int amdgpu_vm_sdma_finalize(struct amdgpu_vm_update_params *p)
 {
+	if (p->num_out_fences > 0)
+		return amdgpu_vm_sdma_commit(p);
+
 	return 0;
 }
 
@@ -308,6 +347,6 @@ const struct amdgpu_vm_update_funcs amdgpu_vm_sdma_funcs = {
 	.map_table = amdgpu_vm_sdma_map_table,
 	.prepare = amdgpu_vm_sdma_prepare,
 	.update = amdgpu_vm_sdma_update,
-	.commit = amdgpu_vm_sdma_commit,
+	.commit = amdgpu_vm_sdma_record_fence,
 	.finalize = amdgpu_vm_sdma_finalize,
 };
