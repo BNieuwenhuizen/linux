@@ -514,6 +514,8 @@ struct drm_amdgpu_gem_op {
 #define AMDGPU_VM_MTYPE_UC		(4 << 5)
 /* Use Read Write MTYPE instead of default MTYPE */
 #define AMDGPU_VM_MTYPE_RW		(5 << 5)
+/* Use wait_syncobj/signal_syncobj and do not apply implicit sync */
+#define AMDGPU_VM_EXPLICIT_SYNC		(1 << 9)
 
 struct drm_amdgpu_gem_va {
 	/** GEM object handle */
@@ -529,6 +531,15 @@ struct drm_amdgpu_gem_va {
 	__u64 offset_in_bo;
 	/** Specify mapping size. Must be correctly aligned. */
 	__u64 map_size;
+
+	/** pointer to array of struct drm_amdgpu_cs_chunk_syncobj */
+	__u64 wait_syncobj;
+	/** pointer to array of struct drm_amdgpu_cs_chunk_syncobj */
+	__u64 signal_syncobj;
+	/** length of wait_syncobj in number of elements. */
+	__u32 num_wait_syncobj;
+	/** length of signal_syncobj in number of elements. */
+	__u32 num_signal_syncobj;
 };
 
 #define AMDGPU_HW_IP_GFX          0
