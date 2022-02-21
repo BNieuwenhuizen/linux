@@ -34,6 +34,7 @@
 #include <drm/amdgpu_drm.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_gem_ttm_helper.h>
+#include <drm/drm_syncobj.h>
 
 #include "amdgpu.h"
 #include "amdgpu_display.h"
@@ -663,9 +664,10 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 {
 	const uint32_t valid_flags = AMDGPU_VM_DELAY_UPDATE |
 		AMDGPU_VM_PAGE_READABLE | AMDGPU_VM_PAGE_WRITEABLE |
-		AMDGPU_VM_PAGE_EXECUTABLE | AMDGPU_VM_MTYPE_MASK;
+		AMDGPU_VM_PAGE_EXECUTABLE | AMDGPU_VM_MTYPE_MASK |
+		AMDGPU_VM_EXPLICIT_SYNC;
 	const uint32_t prt_flags = AMDGPU_VM_DELAY_UPDATE |
-		AMDGPU_VM_PAGE_PRT;
+		AMDGPU_VM_PAGE_PRT | AMDGPU_VM_EXPLICIT_SYNC;
 
 	struct drm_amdgpu_gem_va *args = data;
 	struct drm_gem_object *gobj;
@@ -674,11 +676,17 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	struct amdgpu_bo *abo;
 	struct amdgpu_bo_va *bo_va;
 	struct amdgpu_bo_list_entry vm_pd;
+	struct drm_amdgpu_cs_chunk_syncobj *wait_syncobj_chunks = NULL;
+	struct drm_amdgpu_cs_chunk_syncobj *signal_syncobj_chunks = NULL;
+	struct drm_syncobj **syncobjs = NULL;
+	struct dma_fence_chain **chains = NULL;
+	struct dma_fence *fence;
 	struct ttm_validate_buffer tv;
 	struct ww_acquire_ctx ticket;
 	struct list_head list, duplicates;
 	uint64_t va_flags;
 	uint64_t vm_size;
+	uint32_t i;
 	int r = 0;
 
 	if (args->va_address < AMDGPU_VA_RESERVED_SIZE) {
@@ -712,6 +720,86 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		dev_dbg(dev->dev, "invalid flags combination 0x%08X\n",
 			args->flags);
 		return -EINVAL;
+	}
+
+	if ((args->flags & AMDGPU_VM_DELAY_UPDATE) &&
+	    ((args->flags & AMDGPU_VM_EXPLICIT_SYNC) ||
+	     args->num_wait_syncobj || args->num_signal_syncobj)) {
+		dev_dbg(dev->dev, "AMDGPU_VM_DELAY_UPDATE and explicit "
+			"synchronization don't combine.\n");
+		return -EINVAL;
+	}
+
+	if (args->num_wait_syncobj) {
+		wait_syncobj_chunks = kvmalloc_array(args->num_wait_syncobj,
+						     sizeof(*wait_syncobj_chunks),
+						     GFP_KERNEL);
+		if (!wait_syncobj_chunks) {
+			r = -ENOMEM;
+			goto error_alloc;
+		}
+
+		if (copy_from_user(wait_syncobj_chunks, u64_to_user_ptr(args->wait_syncobj),
+				   args->num_wait_syncobj * sizeof(*wait_syncobj_chunks))) {
+			r = -EFAULT;
+			goto error_alloc;
+		}
+	}
+
+	if (args->num_signal_syncobj) {
+		signal_syncobj_chunks = kvmalloc_array(args->num_signal_syncobj,
+						     sizeof(*signal_syncobj_chunks),
+						     GFP_KERNEL);
+		syncobjs = kvmalloc_array(args->num_signal_syncobj, sizeof(*syncobjs),
+					  GFP_KERNEL | __GFP_ZERO);
+		chains = kvmalloc_array(args->num_signal_syncobj, sizeof(*chains),
+					GFP_KERNEL | __GFP_ZERO);
+		if (!signal_syncobj_chunks || !syncobjs || !chains) {
+			r = -ENOMEM;
+			goto error_alloc;
+		}
+
+		if (copy_from_user(signal_syncobj_chunks, u64_to_user_ptr(args->signal_syncobj),
+				   args->num_signal_syncobj * sizeof(*signal_syncobj_chunks))) {
+			r = -EFAULT;
+			goto error_alloc;
+		}
+	}
+
+	for (i = 0; i < args->num_wait_syncobj; ++i) {
+		if (wait_syncobj_chunks[i].flags) {
+			r = -EINVAL;
+			goto error_alloc;
+		}
+
+		r = drm_syncobj_find_fence(filp, wait_syncobj_chunks[i].handle,
+					   wait_syncobj_chunks[i].point, 0, &fence);
+		if (r)
+			goto error_alloc;
+
+		/* TODO: do something useful to wait on the fence */
+		dma_fence_put(fence);
+	}
+
+	for (i = 0; i < args->num_signal_syncobj; ++i) {
+		if (signal_syncobj_chunks[i].flags) {
+			r = -EINVAL;
+			goto error_alloc;
+		}
+
+		syncobjs[i] = drm_syncobj_find(filp, signal_syncobj_chunks[i].handle);
+		if (!syncobjs[i]) {
+			r = -ENOENT;
+			goto error_alloc;
+		}
+
+		if (signal_syncobj_chunks[i].point) {
+			chains[i] = kzalloc(sizeof(struct dma_fence_chain), GFP_KERNEL);
+			if (!chains[i]) {
+				r = -ENOMEM;
+				goto error_alloc;
+			}
+		}
 	}
 
 	switch (args->operation) {
@@ -792,11 +880,46 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		amdgpu_gem_va_update_vm(adev, &fpriv->vm, bo_va,
 					args->operation);
 
+	if (r)
+		goto error_backoff;
+
+	/* Not entirely valid. TODO to replace with actual fence. */
+	fence = dma_fence_allocate_private_stub();
+
+	for (i = 0; i < args->num_signal_syncobj; ++i) {
+		if (chains[i]) {
+			/* drm_syncobj_add_point uses the existing ref while
+			 * drm_syncobj_replace_fence increments the refcount. */
+			dma_fence_get(fence);
+
+			drm_syncobj_add_point(syncobjs[i], chains[i], fence,
+					      signal_syncobj_chunks[i].point);
+
+			/* Committed, so avoid freeing it later. */
+			chains[i] = NULL;
+		} else {
+			drm_syncobj_replace_fence(syncobjs[i], fence);
+		}
+	}
+
+	dma_fence_put(fence);
 error_backoff:
 	ttm_eu_backoff_reservation(&ticket, &list);
 
 error_unref:
 	drm_gem_object_put(gobj);
+error_alloc:
+	for (i = 0; i < args->num_signal_syncobj; ++i) {
+		if (syncobjs && syncobjs[i])
+			drm_syncobj_put(syncobjs[i]);
+		if (chains && chains[i])
+			kvfree(chains[i]);
+	}
+
+	kvfree(wait_syncobj_chunks);
+	kvfree(signal_syncobj_chunks);
+	kvfree(syncobjs);
+	kvfree(chains);
 	return r;
 }
 
