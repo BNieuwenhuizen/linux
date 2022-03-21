@@ -609,9 +609,8 @@ int amdgpu_bo_create(struct amdgpu_device *adev,
 		if (unlikely(r))
 			goto fail_unreserve;
 
-		amdgpu_bo_fence(bo, fence, false);
-		dma_fence_put(bo->tbo.moving);
-		bo->tbo.moving = dma_fence_get(fence);
+		dma_resv_add_fence(bo->tbo.base.resv, fence,
+				   DMA_RESV_USAGE_KERNEL);
 		dma_fence_put(fence);
 	}
 	if (!bp->resv)
@@ -1307,7 +1306,7 @@ void amdgpu_bo_release_notify(struct ttm_buffer_object *bo)
 
 	r = amdgpu_fill_buffer(abo, AMDGPU_POISON, bo->base.resv, &fence);
 	if (!WARN_ON(r)) {
-		amdgpu_bo_fence(abo, fence, false);
+		dma_resv_add_fence(bo->base.resv, fence, DMA_RESV_USAGE_KERNEL);
 		dma_fence_put(fence);
 	}
 
