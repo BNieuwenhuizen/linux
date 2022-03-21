@@ -1633,6 +1633,12 @@ int _i915_vma_move_to_active(struct i915_vma *vma,
 			intel_frontbuffer_put(front);
 		}
 
+		if (!(flags & __EXEC_OBJECT_NO_RESERVE)) {
+			err = dma_resv_reserve_fences(vma->obj->base.resv, 1);
+			if (unlikely(err))
+				return err;
+		}
+
 		if (fence) {
 			dma_resv_add_excl_fence(vma->obj->base.resv, fence);
 			obj->write_domain = I915_GEM_DOMAIN_RENDER;
@@ -1640,7 +1646,7 @@ int _i915_vma_move_to_active(struct i915_vma *vma,
 		}
 	} else {
 		if (!(flags & __EXEC_OBJECT_NO_RESERVE)) {
-			err = dma_resv_reserve_shared(vma->obj->base.resv, 1);
+			err = dma_resv_reserve_fences(vma->obj->base.resv, 1);
 			if (unlikely(err))
 				return err;
 		}
