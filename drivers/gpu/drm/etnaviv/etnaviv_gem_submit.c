@@ -178,6 +178,7 @@ static int submit_fence_sync(struct etnaviv_gem_submit *submit)
 	for (i = 0; i < submit->nr_bos; i++) {
 		struct etnaviv_gem_submit_bo *bo = &submit->bos[i];
 		struct dma_resv *robj = bo->obj->base.resv;
+		enum dma_resv_usage usage;
 
 		ret = dma_resv_reserve_fences(robj, 1);
 		if (ret)
@@ -186,9 +187,9 @@ static int submit_fence_sync(struct etnaviv_gem_submit *submit)
 		if (submit->flags & ETNA_SUBMIT_NO_IMPLICIT)
 			continue;
 
-		ret = dma_resv_get_fences(robj,
-					  bo->flags & ETNA_SUBMIT_BO_WRITE,
-					  &bo->nr_shared, &bo->shared);
+		usage = dma_resv_usage_rw(bo->flags & ETNA_SUBMIT_BO_WRITE);
+		ret = dma_resv_get_fences(robj, usage, &bo->nr_shared,
+					  &bo->shared);
 		if (ret)
 			return ret;
 	}

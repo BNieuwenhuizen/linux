@@ -1166,8 +1166,8 @@ int vmw_resources_clean(struct vmw_buffer_object *vbo, pgoff_t start,
 		if (bo->moving)
 			dma_fence_put(bo->moving);
 
-		/* TODO: This is actually a memory management dependency */
-		return dma_resv_get_singleton(bo->base.resv, false,
+		return dma_resv_get_singleton(bo->base.resv,
+					      DMA_RESV_USAGE_WRITE,
 					      &bo->moving);
 	}
 

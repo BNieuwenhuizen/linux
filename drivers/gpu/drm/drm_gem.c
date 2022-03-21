@@ -770,7 +770,8 @@ long drm_gem_dma_resv_wait(struct drm_file *filep, u32 handle,
 		return -EINVAL;
 	}
 
-	ret = dma_resv_wait_timeout(obj->resv, wait_all, true, timeout);
+	ret = dma_resv_wait_timeout(obj->resv, dma_resv_usage_rw(wait_all),
+				    true, timeout);
 	if (ret == 0)
 		ret = -ETIME;
 	else if (ret > 0)
@@ -1344,7 +1345,8 @@ int drm_gem_fence_array_add_implicit(struct xarray *fence_array,
 	struct dma_fence *fence;
 	int ret = 0;
 
-	dma_resv_for_each_fence(&cursor, obj->resv, write, fence) {
+	dma_resv_for_each_fence(&cursor, obj->resv, dma_resv_usage_rw(write),
+				fence) {
 		ret = drm_gem_fence_array_add(fence_array, fence);
 		if (ret)
 			break;

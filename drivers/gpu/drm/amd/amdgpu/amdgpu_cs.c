@@ -1278,7 +1278,9 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 		 * submission in a dma_fence_chain and add it as exclusive
 		 * fence.
 		 */
-		dma_resv_for_each_fence(&cursor, resv, false, fence) {
+		dma_resv_for_each_fence(&cursor, resv,
+					DMA_RESV_USAGE_WRITE,
+					fence) {
 			break;
 		}
 		dma_fence_chain_init(chain, fence, dma_fence_get(p->fence), 1);
