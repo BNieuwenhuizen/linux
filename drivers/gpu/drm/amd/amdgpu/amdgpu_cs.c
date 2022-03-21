@@ -54,8 +54,8 @@ static int amdgpu_cs_user_fence_chunk(struct amdgpu_cs_parser *p,
 	bo = amdgpu_bo_ref(gem_to_amdgpu_bo(gobj));
 	p->uf_entry.priority = 0;
 	p->uf_entry.tv.bo = &bo->tbo;
-	/* One for TTM and one for the CS job */
-	p->uf_entry.tv.num_shared = 2;
+	/* One for TTM and two for the CS job */
+	p->uf_entry.tv.num_shared = 3;
 
 	drm_gem_object_put(gobj);
 
@@ -1284,7 +1284,7 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 			break;
 		}
 		dma_fence_chain_init(chain, fence, dma_fence_get(p->fence), 1);
-		rcu_assign_pointer(resv->fence_excl, &chain->base);
+		dma_resv_add_fence(resv, &chain->base, DMA_RESV_USAGE_WRITE);
 		e->chain = NULL;
 	}
 

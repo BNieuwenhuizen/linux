@@ -365,7 +365,7 @@ int lima_gem_submit(struct drm_file *file, struct lima_submit *submit)
 		if (submit->bos[i].flags & LIMA_SUBMIT_BO_WRITE)
 			dma_resv_add_excl_fence(lima_bo_resv(bos[i]), fence);
 		else
-			dma_resv_add_shared_fence(lima_bo_resv(bos[i]), fence);
+			dma_resv_add_fence(lima_bo_resv(bos[i]), fence);
 	}
 
 	drm_gem_unlock_reservations((struct drm_gem_object **)bos,

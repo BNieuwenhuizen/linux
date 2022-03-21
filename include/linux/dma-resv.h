@@ -95,8 +95,8 @@ static inline enum dma_resv_usage dma_resv_usage_rw(bool write)
 /**
  * struct dma_resv - a reservation object manages fences for a buffer
  *
- * There are multiple uses for this, with sometimes slightly different rules in
- * how the fence slots are used.
+ * This is a container for dma_fence objects which needs to handle multiple use
+ * cases.
  *
  * One use is to synchronize cross-driver access to a struct dma_buf, either for
  * dynamic buffer management or just to handle implicit synchronization between
@@ -126,47 +126,22 @@ struct dma_resv {
 	 * @seq:
 	 *
 	 * Sequence count for managing RCU read-side synchronization, allows
-	 * read-only access to @fence_excl and @fence while ensuring we take a
-	 * consistent snapshot.
+	 * read-only access to @fences while ensuring we take a consistent
+	 * snapshot.
 	 */
 	seqcount_ww_mutex_t seq;
 
 	/**
-	 * @fence_excl:
+	 * @fences:
 	 *
-	 * The exclusive fence, if there is one currently.
+	 * Array of fences which where added to the dma_resv object
 	 *
-	 * To guarantee that no fences are lost, this new fence must signal
-	 * only after the previous exclusive fence has signalled. If
-	 * semantically only a new access is added without actually treating the
-	 * previous one as a dependency the exclusive fences can be strung
-	 * together using struct dma_fence_chain.
-	 *
-	 * Note that actual semantics of what an exclusive or shared fence mean
-	 * is defined by the user, for reservation objects shared across drivers
-	 * see &dma_buf.resv.
-	 */
-	struct dma_fence __rcu *fence_excl;
-
-	/**
-	 * @fence:
-	 *
-	 * List of current shared fences.
-	 *
-	 * There are no ordering constraints of shared fences against the
-	 * exclusive fence slot. If a waiter needs to wait for all access, it
-	 * has to wait for both sets of fences to signal.
-	 *
-	 * A new fence is added by calling dma_resv_add_shared_fence(). Since
-	 * this often needs to be done past the point of no return in command
+	 * A new fence is added by calling dma_resv_add_fence(). Since this
+	 * often needs to be done past the point of no return in command
 	 * submission it cannot fail, and therefore sufficient slots need to be
 	 * reserved by calling dma_resv_reserve_fences().
-	 *
-	 * Note that actual semantics of what an exclusive or shared fence mean
-	 * is defined by the user, for reservation objects shared across drivers
-	 * see &dma_buf.resv.
 	 */
-	struct dma_resv_list __rcu *fence;
+	struct dma_resv_list __rcu *fences;
 };
 
 /**
@@ -184,6 +159,9 @@ struct dma_resv_iter {
 	/** @fence: the currently handled fence */
 	struct dma_fence *fence;
 
+	/** @fence_usage: the usage of the current fence */
+	enum dma_resv_usage fence_usage;
+
 	/** @seq: sequence number to check for modifications */
 	unsigned int seq;
 
@@ -193,8 +171,8 @@ struct dma_resv_iter {
 	/** @fences: the shared fences; private, *MUST* not dereference  */
 	struct dma_resv_list *fences;
 
-	/** @shared_count: number of shared fences */
-	unsigned int shared_count;
+	/** @num_fences: number of fences */
+	unsigned int num_fences;
 
 	/** @is_restarted: true if this is the first returned fence */
 	bool is_restarted;
@@ -233,14 +211,15 @@ static inline void dma_resv_iter_end(struct dma_resv_iter *cursor)
 }
 
 /**
- * dma_resv_iter_is_exclusive - test if the current fence is the exclusive one
+ * dma_resv_iter_usage - Return the usage of the current fence
  * @cursor: the cursor of the current position
  *
- * Returns true if the currently returned fence is the exclusive one.
+ * Returns the usage of the currently processed fence.
  */
-static inline bool dma_resv_iter_is_exclusive(struct dma_resv_iter *cursor)
+static inline enum dma_resv_usage
+dma_resv_iter_usage(struct dma_resv_iter *cursor)
 {
-	return cursor->index == 0;
+	return cursor->fence_usage;
 }
 
 /**
@@ -291,9 +270,9 @@ static inline bool dma_resv_iter_is_restarted(struct dma_resv_iter *cursor)
 #define dma_resv_assert_held(obj) lockdep_assert_held(&(obj)->lock.base)
 
 #ifdef CONFIG_DEBUG_MUTEXES
-void dma_resv_reset_shared_max(struct dma_resv *obj);
+void dma_resv_reset_max_fences(struct dma_resv *obj);
 #else
-static inline void dma_resv_reset_shared_max(struct dma_resv *obj) {}
+static inline void dma_resv_reset_max_fences(struct dma_resv *obj) {}
 #endif
 
 /**
@@ -439,17 +418,18 @@ static inline struct ww_acquire_ctx *dma_resv_locking_ctx(struct dma_resv *obj)
  */
 static inline void dma_resv_unlock(struct dma_resv *obj)
 {
-	dma_resv_reset_shared_max(obj);
+	dma_resv_reset_max_fences(obj);
 	ww_mutex_unlock(&obj->lock);
 }
 
 void dma_resv_init(struct dma_resv *obj);
 void dma_resv_fini(struct dma_resv *obj);
 int dma_resv_reserve_fences(struct dma_resv *obj, unsigned int num_fences);
-void dma_resv_add_shared_fence(struct dma_resv *obj, struct dma_fence *fence);
+void dma_resv_add_fence(struct dma_resv *obj, struct dma_fence *fence,
+			enum dma_resv_usage usage);
 void dma_resv_replace_fences(struct dma_resv *obj, uint64_t context,
-			     struct dma_fence *fence);
-void dma_resv_add_excl_fence(struct dma_resv *obj, struct dma_fence *fence);
+			     struct dma_fence *fence,
+			     enum dma_resv_usage usage);
 int dma_resv_get_fences(struct dma_resv *obj, enum dma_resv_usage usage,
 			unsigned int *num_fences, struct dma_fence ***fences);
 int dma_resv_get_singleton(struct dma_resv *obj, enum dma_resv_usage usage,

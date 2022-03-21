@@ -393,16 +393,13 @@ struct dma_buf {
 	 * e.g. exposed in `Implicit Fence Poll Support`_ must follow the
 	 * below rules.
 	 *
-	 * - Drivers must add a shared fence through dma_resv_add_shared_fence()
-	 *   for anything the userspace API considers a read access. This highly
-	 *   depends upon the API and window system.
+	 * - Drivers must add a read fence through dma_resv_add_fence() with the
+	 *   DMA_RESV_USAGE_READ flag for anything the userspace API considers a
+	 *   read access. This highly depends upon the API and window system.
 	 *
-	 * - Similarly drivers must set the exclusive fence through
-	 *   dma_resv_add_excl_fence() for anything the userspace API considers
-	 *   write access.
-	 *
-	 * - Drivers may just always set the exclusive fence, since that only
-	 *   causes unecessarily synchronization, but no correctness issues.
+	 * - Similarly drivers must add a write fence through
+	 *   dma_resv_add_fence() with the DMA_RESV_USAGE_WRITE flag for
+	 *   anything the userspace API considers write access.
 	 *
 	 * - Some drivers only expose a synchronous userspace API with no
 	 *   pipelining across drivers. These do not set any fences for their
@@ -413,7 +410,7 @@ struct dma_buf {
 	 * Dynamic importers, see dma_buf_attachment_is_dynamic(), have
 	 * additional constraints on how they set up fences:
 	 *
-	 * - Dynamic importers must obey the exclusive fence and wait for it to
+	 * - Dynamic importers must obey the kernel fences and wait for them to
 	 *   signal before allowing access to the buffer's underlying storage
 	 *   through the device.
 	 *

@@ -148,12 +148,13 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 		if (dma_resv_iter_is_restarted(&cursor))
 			args->busy = 0;
 
-		if (dma_resv_iter_is_exclusive(&cursor))
-			/* Translate the exclusive fence to the READ *and* WRITE engine */
-			args->busy |= busy_check_writer(fence);
-		else
-			/* Translate shared fences to READ set of engines */
-			args->busy |= busy_check_reader(fence);
+		/* Translate read fences to READ set of engines */
+		args->busy |= busy_check_reader(fence);
+	}
+	dma_resv_iter_begin(&cursor, obj->base.resv, DMA_RESV_USAGE_WRITE);
+	dma_resv_for_each_fence_unlocked(&cursor, fence) {
+		/* Translate the write fences to the READ *and* WRITE engine */
+		args->busy |= busy_check_writer(fence);
 	}
 	dma_resv_iter_end(&cursor);
 
