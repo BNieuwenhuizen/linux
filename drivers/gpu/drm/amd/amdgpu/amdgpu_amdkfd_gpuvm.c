@@ -410,7 +410,7 @@ static int vm_update_pds(struct amdgpu_vm *vm, struct amdgpu_sync *sync)
 	struct amdgpu_device *adev = amdgpu_ttm_adev(pd->tbo.bdev);
 	int ret;
 
-	ret = amdgpu_vm_update_pdes(adev, vm, false);
+	ret = amdgpu_vm_update_pdes(adev, vm, false, NULL);
 	if (ret)
 		return ret;
 

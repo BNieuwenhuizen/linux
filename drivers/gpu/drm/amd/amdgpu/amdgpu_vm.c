@@ -1386,14 +1386,15 @@ static void amdgpu_vm_invalidate_pds(struct amdgpu_device *adev,
  * @adev: amdgpu_device pointer
  * @vm: requested vm
  * @immediate: submit immediately to the paging queue
+ * @last_update: optional returned last update
  *
  * Makes sure all directories are up to date.
  *
  * Returns:
  * 0 for success, error for failure.
  */
-int amdgpu_vm_update_pdes(struct amdgpu_device *adev,
-			  struct amdgpu_vm *vm, bool immediate)
+int amdgpu_vm_update_pdes(struct amdgpu_device *adev, struct amdgpu_vm *vm,
+			  bool immediate, struct dma_fence **last_update)
 {
 	struct amdgpu_vm_update_params params;
 	int r, idx;
@@ -1426,7 +1427,7 @@ int amdgpu_vm_update_pdes(struct amdgpu_device *adev,
 			goto error;
 	}
 
-	r = vm->update_funcs->commit(&params, &vm->last_update);
+	r = vm->update_funcs->commit(&params, last_update ? last_update : &vm->last_update);
 	if (r)
 		goto error;
 	drm_dev_exit(idx);
@@ -3430,7 +3431,7 @@ bool amdgpu_vm_handle_fault(struct amdgpu_device *adev, u32 pasid,
 	if (r)
 		goto error_unlock;
 
-	r = amdgpu_vm_update_pdes(adev, vm, true);
+	r = amdgpu_vm_update_pdes(adev, vm, true, NULL);
 
 error_unlock:
 	amdgpu_bo_unreserve(root);
