@@ -2092,6 +2092,7 @@ static void amdgpu_vm_free_mapping(struct amdgpu_device *adev,
 				   struct amdgpu_bo_va_mapping *mapping,
 				   struct dma_fence *fence)
 {
+	list_del(&mapping->list);
 	if (mapping->flags & AMDGPU_PTE_PRT)
 		amdgpu_vm_add_prt_cb(adev, fence);
 	kfree(mapping);
@@ -2146,7 +2147,6 @@ int amdgpu_vm_clear_freed(struct amdgpu_device *adev,
 	while (!list_empty(&vm->freed)) {
 		mapping = list_first_entry(&vm->freed,
 			struct amdgpu_bo_va_mapping, list);
-		list_del(&mapping->list);
 
 		if (vm->pte_support_ats &&
 		    mapping->start < AMDGPU_GMC_HOLE_START)
@@ -2473,13 +2473,12 @@ int amdgpu_vm_bo_unmap(struct amdgpu_device *adev,
 			return -ENOENT;
 	}
 
-	list_del(&mapping->list);
 	amdgpu_vm_it_remove(mapping, &vm->va);
 	mapping->bo_va = NULL;
 	trace_amdgpu_vm_bo_unmap(bo_va, mapping);
 
 	if (valid)
-		list_add(&mapping->list, &vm->freed);
+		list_move(&mapping->list, &vm->freed);
 	else
 		amdgpu_vm_free_mapping(adev, vm, mapping,
 				       bo_va->last_pt_update);
@@ -2676,14 +2675,12 @@ void amdgpu_vm_bo_rmv(struct amdgpu_device *adev,
 	spin_unlock(&vm->invalidated_lock);
 
 	list_for_each_entry_safe(mapping, next, &bo_va->valids, list) {
-		list_del(&mapping->list);
 		amdgpu_vm_it_remove(mapping, &vm->va);
 		mapping->bo_va = NULL;
 		trace_amdgpu_vm_bo_unmap(bo_va, mapping);
-		list_add(&mapping->list, &vm->freed);
+		list_move(&mapping->list, &vm->freed);
 	}
 	list_for_each_entry_safe(mapping, next, &bo_va->invalids, list) {
-		list_del(&mapping->list);
 		amdgpu_vm_it_remove(mapping, &vm->va);
 		amdgpu_vm_free_mapping(adev, vm, mapping,
 				       bo_va->last_pt_update);
@@ -3159,7 +3156,6 @@ void amdgpu_vm_fini(struct amdgpu_device *adev, struct amdgpu_vm *vm)
 			prt_fini_needed = false;
 		}
 
-		list_del(&mapping->list);
 		amdgpu_vm_free_mapping(adev, vm, mapping, NULL);
 	}
 
