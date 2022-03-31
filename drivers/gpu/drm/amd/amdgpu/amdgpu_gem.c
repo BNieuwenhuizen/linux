@@ -232,12 +232,12 @@ static void amdgpu_gem_object_close(struct drm_gem_object *obj,
 		fence = NULL;
 	}
 
-	r = amdgpu_vm_clear_freed(adev, vm, &fence);
+	r = amdgpu_vm_clear_freed(adev, vm, NULL);
+	fence = vm->last_clear;
 	if (r || !fence)
 		goto out_unlock;
 
 	amdgpu_bo_fence(bo, fence, true);
-	dma_fence_put(fence);
 
 out_unlock:
 	if (unlikely(r < 0))

@@ -2163,15 +2163,17 @@ int amdgpu_vm_clear_freed(struct amdgpu_device *adev,
 		}
 	}
 
-	if (fence && f) {
+	if (!f)
+		return 0;
+
+	if (fence) {
 		dma_fence_put(*fence);
-		*fence = f;
-	} else {
-		dma_fence_put(f);
+		*fence = dma_fence_get(f);
 	}
 
+	swap(vm->last_clear, f);
+	dma_fence_put(f);
 	return 0;
-
 }
 
 /**
@@ -2957,6 +2959,7 @@ int amdgpu_vm_init(struct amdgpu_device *adev, struct amdgpu_vm *vm)
 	else
 		vm->update_funcs = &amdgpu_vm_sdma_funcs;
 	vm->last_update = NULL;
+	vm->last_clear = NULL;
 	vm->last_unlocked = dma_fence_get_stub();
 
 	mutex_init(&vm->eviction_lock);
@@ -3099,6 +3102,7 @@ int amdgpu_vm_make_compute(struct amdgpu_device *adev, struct amdgpu_vm *vm)
 		vm->update_funcs = &amdgpu_vm_sdma_funcs;
 	}
 	dma_fence_put(vm->last_update);
+	dma_fence_put(vm->last_clear);
 	vm->last_update = NULL;
 	vm->is_compute_context = true;
 
