@@ -1092,7 +1092,7 @@ static int update_gpuvm_pte(struct kgd_mem *mem,
 		return ret;
 
 	/* Update the page tables  */
-	ret = amdgpu_vm_bo_update(adev, bo_va, false, table_freed);
+	ret = amdgpu_vm_bo_update(adev, bo_va, false, table_freed, NULL);
 	if (ret) {
 		pr_err("amdgpu_vm_bo_update failed\n");
 		return ret;

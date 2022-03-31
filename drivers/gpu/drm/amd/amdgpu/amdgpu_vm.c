@@ -1882,14 +1882,13 @@ void amdgpu_vm_get_memory(struct amdgpu_vm *vm, uint64_t *vram_mem,
  * 0 for success, -EINVAL for failure.
  */
 int amdgpu_vm_bo_update(struct amdgpu_device *adev, struct amdgpu_bo_va *bo_va,
-			bool clear, bool *table_freed)
+			bool clear, bool *table_freed, struct dma_fence **last_update)
 {
 	struct amdgpu_bo *bo = bo_va->base.bo;
 	struct amdgpu_vm *vm = bo_va->base.vm;
 	struct amdgpu_bo_va_mapping *mapping;
 	dma_addr_t *pages_addr = NULL;
 	struct ttm_resource *mem;
-	struct dma_fence **last_update;
 	struct dma_resv *resv;
 	uint64_t flags;
 	struct amdgpu_device *bo_adev = adev;
@@ -1927,8 +1926,10 @@ int amdgpu_vm_bo_update(struct amdgpu_device *adev, struct amdgpu_bo_va *bo_va,
 		flags = 0x0;
 	}
 
-	if (clear || (bo && bo->tbo.base.resv ==
-		      vm->root.bo->tbo.base.resv))
+	if (last_update)
+		dma_resv_assert_held(bo->tbo.base.resv);
+	else if (clear || (bo && bo->tbo.base.resv ==
+			   vm->root.bo->tbo.base.resv))
 		last_update = &vm->last_update;
 	else
 		last_update = &bo_va->last_pt_update;
@@ -2199,7 +2200,7 @@ int amdgpu_vm_handle_moved(struct amdgpu_device *adev,
 
 	list_for_each_entry_safe(bo_va, tmp, &vm->moved, base.vm_status) {
 		/* Per VM BOs never need to bo cleared in the page tables */
-		r = amdgpu_vm_bo_update(adev, bo_va, false, NULL);
+		r = amdgpu_vm_bo_update(adev, bo_va, false, NULL, NULL);
 		if (r)
 			return r;
 	}
@@ -2218,7 +2219,7 @@ int amdgpu_vm_handle_moved(struct amdgpu_device *adev,
 		else
 			clear = true;
 
-		r = amdgpu_vm_bo_update(adev, bo_va, clear, NULL);
+		r = amdgpu_vm_bo_update(adev, bo_va, clear, NULL, NULL);
 		if (r)
 			return r;
 
