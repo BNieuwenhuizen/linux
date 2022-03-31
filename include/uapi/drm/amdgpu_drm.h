@@ -518,7 +518,8 @@ struct drm_amdgpu_gem_op {
 struct drm_amdgpu_gem_va {
 	/** GEM object handle */
 	__u32 handle;
-	__u32 _pad;
+	/** Optional DRM Syncobj to signal when operation completes */
+	__u32 syncobj;
 	/** AMDGPU_VA_OP_* */
 	__u32 operation;
 	/** AMDGPU_VM_PAGE_* */
@@ -529,6 +530,8 @@ struct drm_amdgpu_gem_va {
 	__u64 offset_in_bo;
 	/** Specify mapping size. Must be correctly aligned. */
 	__u64 map_size;
+	/** Optional Syncobj timeline point to signal */
+	__u64 timeline_point;
 };
 
 #define AMDGPU_HW_IP_GFX          0

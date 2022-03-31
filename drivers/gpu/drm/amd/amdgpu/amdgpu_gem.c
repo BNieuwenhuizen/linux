@@ -33,6 +33,7 @@
 
 #include <drm/amdgpu_drm.h>
 #include <drm/drm_drv.h>
+#include <drm/drm_syncobj.h>
 #include <drm/drm_gem_ttm_helper.h>
 
 #include "amdgpu.h"
@@ -598,6 +599,7 @@ out:
  * @vm: vm to update
  * @bo_va: bo_va to update
  * @operation: map, unmap or clear
+ * @last_update: optional pointer to a dma_fence for the last VM update
  *
  * Update the bo_va directly after setting its address. Errors are not
  * vital here, so they are not reported back to userspace.
@@ -605,20 +607,21 @@ out:
 static void amdgpu_gem_va_update_vm(struct amdgpu_device *adev,
 				    struct amdgpu_vm *vm,
 				    struct amdgpu_bo_va *bo_va,
-				    uint32_t operation)
+				    uint32_t operation,
+				    struct dma_fence **last_update)
 {
 	int r;
 
 	if (!amdgpu_vm_ready(vm))
 		return;
 
-	r = amdgpu_vm_clear_freed(adev, vm, NULL);
+	r = amdgpu_vm_clear_freed(adev, vm, last_update);
 	if (r)
 		goto error;
 
 	if (operation == AMDGPU_VA_OP_MAP ||
 	    operation == AMDGPU_VA_OP_REPLACE) {
-		r = amdgpu_vm_bo_update(adev, bo_va, false, NULL, NULL);
+		r = amdgpu_vm_bo_update(adev, bo_va, false, NULL, last_update);
 		if (r)
 			goto error;
 	}
@@ -671,6 +674,9 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	struct drm_gem_object *gobj;
 	struct amdgpu_device *adev = drm_to_adev(dev);
 	struct amdgpu_fpriv *fpriv = filp->driver_priv;
+	struct dma_fence *fence = dma_fence_get_stub();
+	struct dma_fence_chain *chain = NULL;
+	struct drm_syncobj *syncobj = NULL;
 	struct amdgpu_bo *abo;
 	struct amdgpu_bo_va *bo_va;
 	struct amdgpu_bo_list_entry vm_pd;
@@ -714,17 +720,9 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		return -EINVAL;
 	}
 
-	switch (args->operation) {
-	case AMDGPU_VA_OP_MAP:
-	case AMDGPU_VA_OP_UNMAP:
-	case AMDGPU_VA_OP_CLEAR:
-	case AMDGPU_VA_OP_REPLACE:
-		break;
-	default:
-		dev_dbg(dev->dev, "unsupported operation %d\n",
-			args->operation);
-		return -EINVAL;
-	}
+	/* For debugging delay all VM updates till CS time */
+	if (!amdgpu_vm_debug)
+		args->flags |= AMDGPU_VM_DELAY_UPDATE;
 
 	INIT_LIST_HEAD(&list);
 	INIT_LIST_HEAD(&duplicates);
@@ -763,6 +761,30 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		bo_va = NULL;
 	}
 
+	if (args->syncobj) {
+		syncobj = drm_syncobj_find(filp, args->syncobj);
+		if (!syncobj) {
+			r = -EINVAL;
+			goto error_backoff;
+		}
+
+		if (args->timeline_point) {
+			chain = dma_fence_chain_alloc();
+			if (!chain) {
+				r = -ENOMEM;
+				goto error_put_syncobj;
+			}
+		}
+
+		/*
+		 * Update the VM once before to make sure there are no other
+		 * pending updates.
+		 */
+		if (!(args->flags & AMDGPU_VM_DELAY_UPDATE))
+			amdgpu_gem_va_update_vm(adev, &fpriv->vm, bo_va,
+						args->operation, NULL);
+	}
+
 	switch (args->operation) {
 	case AMDGPU_VA_OP_MAP:
 		va_flags = amdgpu_gem_va_map_flags(adev, args->flags);
@@ -786,17 +808,42 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 					     va_flags);
 		break;
 	default:
+		dev_dbg(dev->dev, "unsupported operation %d\n",
+			args->operation);
+		r = -EINVAL;
 		break;
 	}
-	if (!r && !(args->flags & AMDGPU_VM_DELAY_UPDATE) && !amdgpu_vm_debug)
+	if (r)
+		goto error_free_chain;
+
+	if (!(args->flags & AMDGPU_VM_DELAY_UPDATE))
 		amdgpu_gem_va_update_vm(adev, &fpriv->vm, bo_va,
-					args->operation);
+					args->operation, syncobj ?
+					&fence : NULL);
+
+	if (syncobj) {
+		if (chain) {
+			drm_syncobj_add_point(syncobj, chain, fence,
+					      args->timeline_point);
+			chain = NULL;
+		} else {
+			drm_syncobj_replace_fence(syncobj, fence);
+		}
+	}
+
+error_free_chain:
+	dma_fence_chain_free(chain);
+
+error_put_syncobj:
+	if (syncobj)
+		drm_syncobj_put(syncobj);
 
 error_backoff:
 	ttm_eu_backoff_reservation(&ticket, &list);
 
 error_unref:
 	drm_gem_object_put(gobj);
+	dma_fence_put(fence);
 	return r;
 }
 
