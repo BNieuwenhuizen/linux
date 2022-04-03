@@ -53,6 +53,7 @@ struct amdgpu_ctx {
 	atomic_t			guilty;
 	unsigned long			ras_counter_ce;
 	unsigned long			ras_counter_ue;
+	bool				disable_implicit_sync;
 };
 
 struct amdgpu_ctx_mgr {
