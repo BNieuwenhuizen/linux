@@ -467,6 +467,30 @@ static int amdgpu_ctx_query2(struct amdgpu_device *adev,
 	return 0;
 }
 
+static int amdgpu_ctx_set_implicit_sync(struct amdgpu_device *adev,
+					struct amdgpu_fpriv *fpriv, uint32_t id,
+					bool enable)
+{
+	struct amdgpu_ctx *ctx;
+	struct amdgpu_ctx_mgr *mgr;
+
+	if (!fpriv)
+		return -EINVAL;
+
+	mgr = &fpriv->ctx_mgr;
+	mutex_lock(&mgr->lock);
+	ctx = idr_find(&mgr->ctx_handles, id);
+	if (!ctx) {
+		mutex_unlock(&mgr->lock);
+		return -EINVAL;
+	}
+
+	ctx->disable_implicit_sync = !enable;
+
+	mutex_unlock(&mgr->lock);
+	return 0;
+}
+
 int amdgpu_ctx_ioctl(struct drm_device *dev, void *data,
 		     struct drm_file *filp)
 {
@@ -499,6 +523,12 @@ int amdgpu_ctx_ioctl(struct drm_device *dev, void *data,
 		break;
 	case AMDGPU_CTX_OP_QUERY_STATE2:
 		r = amdgpu_ctx_query2(adev, fpriv, id, &args->out);
+		break;
+	case AMDGPU_CTX_OP_SET_IMPLICIT_SYNC:
+		if ((args->in.flags & ~AMDGPU_CTX_IMPICIT_SYNC_ENABLED) || args->in.priority)
+			return -EINVAL;
+		r = amdgpu_ctx_set_implicit_sync(adev, fpriv, id,
+						 args->in.flags & ~AMDGPU_CTX_IMPICIT_SYNC_ENABLED);
 		break;
 	default:
 		return -EINVAL;
