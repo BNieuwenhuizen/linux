@@ -1978,6 +1978,7 @@ static int amdgpu_ttm_prepare_job(struct amdgpu_device *adev,
 	if (resv) {
 		r = amdgpu_sync_resv(adev, &(*job)->sync, resv,
 				     AMDGPU_SYNC_ALWAYS,
+				     AMDGPU_SYNC_EXPLICIT,
 				     AMDGPU_FENCE_OWNER_UNDEFINED);
 		if (r) {
 			DRM_ERROR("sync failed (%d).\n", r);
