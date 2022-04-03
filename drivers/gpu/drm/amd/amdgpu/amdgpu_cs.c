@@ -500,6 +500,7 @@ static int amdgpu_cs_parser_bos(struct amdgpu_cs_parser *p,
 	struct amdgpu_bo *gws;
 	struct amdgpu_bo *oa;
 	int r;
+	enum dma_resv_usage resv_usage;
 
 	INIT_LIST_HEAD(&p->validated);
 
@@ -522,16 +523,19 @@ static int amdgpu_cs_parser_bos(struct amdgpu_cs_parser *p,
 
 	mutex_lock(&p->bo_list->bo_list_mutex);
 
+	resv_usage = p->ctx->disable_implicit_sync ? DMA_RESV_USAGE_BOOKKEEP :
+						     DMA_RESV_USAGE_READ;
+
 	/* One for TTM and one for the CS job */
 	amdgpu_bo_list_for_each_entry(e, p->bo_list) {
 		e->tv.num_shared = 2;
-		e->tv.usage = DMA_RESV_USAGE_READ;
+		e->tv.usage = resv_usage;
 	}
 
 	amdgpu_bo_list_get_list(p->bo_list, &p->validated);
 
 	INIT_LIST_HEAD(&duplicates);
-	amdgpu_vm_get_pd_bo(&fpriv->vm, &p->validated, &p->vm_pd, DMA_RESV_USAGE_READ);
+	amdgpu_vm_get_pd_bo(&fpriv->vm, &p->validated, &p->vm_pd, resv_usage);
 
 	if (p->uf_entry.tv.bo && !ttm_to_amdgpu_bo(p->uf_entry.tv.bo)->parent)
 		list_add(&p->uf_entry.tv.head, &p->validated);
@@ -672,7 +676,7 @@ static int amdgpu_cs_sync_rings(struct amdgpu_cs_parser *p)
 		struct dma_resv *resv = bo->tbo.base.resv;
 		enum amdgpu_sync_mode sync_mode;
 
-		sync_mode = amdgpu_bo_explicit_sync(bo) ?
+		sync_mode = (amdgpu_bo_explicit_sync(bo) || p->ctx->disable_implicit_sync) ?
 			AMDGPU_SYNC_EXPLICIT : AMDGPU_SYNC_NE_OWNER;
 		r = amdgpu_sync_resv(p->adev, &p->job->sync, resv, sync_mode,
 				     AMDGPU_SYNC_EXPLICIT, &fpriv->vm);
@@ -1287,7 +1291,8 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 	/* Make sure all BOs are remembered as writers */
 	amdgpu_bo_list_for_each_entry(e, p->bo_list) {
 		e->tv.num_shared = 0;
-		e->tv.usage = DMA_RESV_USAGE_WRITE;
+		e->tv.usage = p->ctx->disable_implicit_sync ? DMA_RESV_USAGE_BOOKKEEP
+							    : DMA_RESV_USAGE_WRITE;
 	}
 
 	ttm_eu_fence_buffer_objects(&p->ticket, &p->validated, p->fence);
