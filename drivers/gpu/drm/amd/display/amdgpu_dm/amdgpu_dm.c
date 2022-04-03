@@ -7566,7 +7566,7 @@ static int dm_plane_helper_prepare_fb(struct drm_plane *plane,
 	INIT_LIST_HEAD(&list);
 
 	tv.bo = &rbo->tbo;
-	tv.num_shared = 1;
+	tv.usage = DMA_RESV_USAGE_READ;
 	list_add(&tv.head, &list);
 
 	r = ttm_eu_reserve_buffers(&ticket, &list, false, NULL);

@@ -54,8 +54,7 @@ static int amdgpu_cs_user_fence_chunk(struct amdgpu_cs_parser *p,
 	bo = amdgpu_bo_ref(gem_to_amdgpu_bo(gobj));
 	p->uf_entry.priority = 0;
 	p->uf_entry.tv.bo = &bo->tbo;
-	/* One for TTM and two for the CS job */
-	p->uf_entry.tv.num_shared = 3;
+	p->uf_entry.tv.usage = DMA_RESV_USAGE_READ;
 
 	drm_gem_object_put(gobj);
 
@@ -518,9 +517,8 @@ static int amdgpu_cs_parser_bos(struct amdgpu_cs_parser *p,
 			return r;
 	}
 
-	/* One for TTM and one for the CS job */
 	amdgpu_bo_list_for_each_entry(e, p->bo_list)
-		e->tv.num_shared = 2;
+		e->tv.usage = DMA_RESV_USAGE_READ;
 
 	amdgpu_bo_list_get_list(p->bo_list, &p->validated);
 
@@ -1245,7 +1243,7 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 
 	/* Make sure all BOs are remembered as writers */
 	amdgpu_bo_list_for_each_entry(e, p->bo_list)
-		e->tv.num_shared = 0;
+		e->tv.usage = DMA_RESV_USAGE_WRITE;
 
 	ttm_eu_fence_buffer_objects(&p->ticket, &p->validated, p->fence);
 	mutex_unlock(&p->adev->notifier_lock);
