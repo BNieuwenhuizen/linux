@@ -31,6 +31,7 @@
 #ifndef _TTM_EXECBUF_UTIL_H_
 #define _TTM_EXECBUF_UTIL_H_
 
+#include <linux/dma-resv.h>
 #include <linux/list.h>
 
 #include "ttm_bo_api.h"
@@ -46,7 +47,7 @@
 struct ttm_validate_buffer {
 	struct list_head head;
 	struct ttm_buffer_object *bo;
-	unsigned int num_shared;
+	enum dma_resv_usage usage;
 };
 
 /**

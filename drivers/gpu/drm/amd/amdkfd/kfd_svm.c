@@ -1394,7 +1394,7 @@ static int svm_range_reserve_bos(struct svm_validate_context *ctx)
 		vm = drm_priv_to_vm(pdd->drm_priv);
 
 		ctx->tv[gpuidx].bo = &vm->root.bo->tbo;
-		ctx->tv[gpuidx].num_shared = 4;
+		ctx->tv[gpuidx].usage = DMA_RESV_USAGE_READ;
 		list_add(&ctx->tv[gpuidx].head, &ctx->validate_list);
 	}
 
