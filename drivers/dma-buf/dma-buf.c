@@ -214,9 +214,10 @@ static bool dma_buf_poll_add_cb(struct dma_resv *resv, bool write,
 {
 	struct dma_resv_iter cursor;
 	struct dma_fence *fence;
+	enum dma_resv_usage usage = write ? DMA_RESV_USAGE_READ : DMA_RESV_USAGE_WRITE;
 	int r;
 
-	dma_resv_for_each_fence(&cursor, resv, write, fence) {
+	dma_resv_for_each_fence(&cursor, resv, usage, fence) {
 		dma_fence_get(fence);
 		r = dma_fence_add_callback(fence, &dcb->cb, dma_buf_poll_cb);
 		if (!r)
