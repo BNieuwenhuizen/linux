@@ -721,8 +721,8 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	}
 
 	/* For debugging delay all VM updates till CS time */
-	if (!amdgpu_vm_debug)
-		args->flags |= AMDGPU_VM_DELAY_UPDATE;
+	//if (!amdgpu_vm_debug)
+	//	args->flags |= AMDGPU_VM_DELAY_UPDATE;
 
 	INIT_LIST_HEAD(&list);
 	INIT_LIST_HEAD(&duplicates);
@@ -762,6 +762,8 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	}
 
 	if (args->syncobj) {
+		args->flags &= ~AMDGPU_VM_DELAY_UPDATE;
+
 		syncobj = drm_syncobj_find(filp, args->syncobj);
 		if (!syncobj) {
 			r = -EINVAL;
@@ -776,6 +778,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 			}
 		}
 
+		
 		/*
 		 * Update the VM once before to make sure there are no other
 		 * pending updates.
