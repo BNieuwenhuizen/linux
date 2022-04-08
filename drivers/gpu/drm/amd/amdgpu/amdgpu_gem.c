@@ -626,7 +626,7 @@ static void amdgpu_gem_va_update_vm(struct amdgpu_device *adev,
 			goto error;
 	}
 
-	r = amdgpu_vm_update_pdes(adev, vm, false, NULL);
+	r = amdgpu_vm_update_pdes(adev, vm, false, last_update);
 
 error:
 	if (r && r != -ERESTARTSYS)
