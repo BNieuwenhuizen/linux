@@ -1427,6 +1427,8 @@ int amdgpu_vm_update_pdes(struct amdgpu_device *adev, struct amdgpu_vm *vm,
 			goto error;
 	}
 
+	trace_amdgpu_vm_update_pdes(last_update ? "explicit" : "vm");
+
 	r = vm->update_funcs->commit(&params, last_update ? last_update : &vm->last_update);
 	if (r)
 		goto error;
