@@ -306,11 +306,6 @@ DECLARE_EVENT_CLASS(amdgpu_vm_mapping,
 		      __entry->soffset, __entry->eoffset, __entry->flags)
 );
 
-DEFINE_EVENT(amdgpu_vm_mapping, amdgpu_vm_bo_update,
-	    TP_PROTO(struct amdgpu_bo_va_mapping *mapping),
-	    TP_ARGS(mapping)
-);
-
 DEFINE_EVENT(amdgpu_vm_mapping, amdgpu_vm_bo_mapping,
 	    TP_PROTO(struct amdgpu_bo_va_mapping *mapping),
 	    TP_ARGS(mapping)
@@ -319,6 +314,46 @@ DEFINE_EVENT(amdgpu_vm_mapping, amdgpu_vm_bo_mapping,
 DEFINE_EVENT(amdgpu_vm_mapping, amdgpu_vm_bo_cs,
 	    TP_PROTO(struct amdgpu_bo_va_mapping *mapping),
 	    TP_ARGS(mapping)
+);
+
+TRACE_EVENT(amdgpu_vm_bo_update,
+	    TP_PROTO(struct amdgpu_bo_va_mapping *mapping, const char *fence_kind),
+	    TP_ARGS(mapping, fence_kind),
+	    TP_STRUCT__entry(
+			     __field(u64, soffset)
+			     __field(u64, eoffset)
+			     __field(u64, flags)
+			     __string(fence_kind, fence_kind)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->soffset = mapping->start;
+			   __entry->eoffset = mapping->last + 1;
+			   __entry->flags = mapping->flags;
+			   __assign_str(fence_kind, fence_kind);
+			   ),
+	    TP_printk("soffs=%010llx, eoffs=%010llx, flags=%llx fence_kind=%s",
+		      __entry->soffset, __entry->eoffset, __entry->flags, __get_str(fence_kind))
+);
+
+TRACE_EVENT(amdgpu_vm_bo_clear,
+	    TP_PROTO(struct amdgpu_bo_va_mapping *mapping, const char *fence_kind),
+	    TP_ARGS(mapping, fence_kind),
+	    TP_STRUCT__entry(
+			     __field(u64, soffset)
+			     __field(u64, eoffset)
+			     __field(u64, flags)
+			     __string(fence_kind, fence_kind)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->soffset = mapping->start;
+			   __entry->eoffset = mapping->last + 1;
+			   __entry->flags = mapping->flags;
+			   __assign_str(fence_kind, fence_kind);
+			   ),
+	    TP_printk("soffs=%010llx, eoffs=%010llx, flags=%llx fence_kind=%s",
+		      __entry->soffset, __entry->eoffset, __entry->flags, __get_str(fence_kind))
 );
 
 TRACE_EVENT(amdgpu_vm_update_ptes,

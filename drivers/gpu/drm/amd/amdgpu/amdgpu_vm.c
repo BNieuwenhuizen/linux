@@ -1894,6 +1894,7 @@ int amdgpu_vm_bo_update(struct amdgpu_device *adev, struct amdgpu_bo_va *bo_va,
 	uint64_t flags;
 	struct amdgpu_device *bo_adev = adev;
 	int r;
+	const char *fence_kind;
 
 	if (clear || !bo) {
 		mem = NULL;
@@ -1927,13 +1928,17 @@ int amdgpu_vm_bo_update(struct amdgpu_device *adev, struct amdgpu_bo_va *bo_va,
 		flags = 0x0;
 	}
 
-	if (last_update)
+	if (last_update) {
 		dma_resv_assert_held(bo->tbo.base.resv);
-	else if (clear || (bo && bo->tbo.base.resv ==
-			   vm->root.bo->tbo.base.resv))
+		fence_kind = "explicit";
+	} else if (clear || (bo && bo->tbo.base.resv ==
+			   vm->root.bo->tbo.base.resv)) {
 		last_update = &vm->last_update;
-	else
+		fence_kind = "vm";
+	} else {
 		last_update = &bo_va->last_pt_update;
+		fence_kind = "bo";
+	}
 
 	if (!clear && bo_va->base.moved) {
 		bo_va->base.moved = false;
@@ -1957,7 +1962,7 @@ int amdgpu_vm_bo_update(struct amdgpu_device *adev, struct amdgpu_bo_va *bo_va,
 		/* Apply ASIC specific mapping flags */
 		amdgpu_gmc_get_vm_pte(adev, mapping, &update_flags);
 
-		trace_amdgpu_vm_bo_update(mapping);
+		trace_amdgpu_vm_bo_update(mapping, fence_kind);
 
 		r = amdgpu_vm_bo_update_mapping(adev, bo_adev, vm, false, false,
 						resv, mapping->start,
@@ -2153,6 +2158,8 @@ int amdgpu_vm_clear_freed(struct amdgpu_device *adev,
 		if (vm->pte_support_ats &&
 		    mapping->start < AMDGPU_GMC_HOLE_START)
 			init_pte_value = AMDGPU_PTE_DEFAULT_ATC;
+
+		trace_amdgpu_vm_bo_clear(mapping, fence ? "explicit" : "none");
 
 		r = amdgpu_vm_bo_update_mapping(adev, adev, vm, false, false,
 						resv, mapping->start,
