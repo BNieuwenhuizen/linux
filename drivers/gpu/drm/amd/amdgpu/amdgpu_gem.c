@@ -40,6 +40,7 @@
 #include "amdgpu_display.h"
 #include "amdgpu_dma_buf.h"
 #include "amdgpu_xgmi.h"
+#include "amdgpu_trace.h"
 
 static const struct drm_gem_object_funcs amdgpu_gem_object_funcs;
 
@@ -686,6 +687,8 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	uint64_t va_flags;
 	uint64_t vm_size;
 	int r = 0;
+
+	trace_amdgpu_gem_va_ioctl(args);
 
 	if (args->va_address < AMDGPU_VA_RESERVED_SIZE) {
 		dev_dbg(dev->dev,

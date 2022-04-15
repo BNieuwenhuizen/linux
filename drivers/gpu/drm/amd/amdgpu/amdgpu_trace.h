@@ -356,6 +356,31 @@ TRACE_EVENT(amdgpu_vm_bo_clear,
 		      __entry->soffset, __entry->eoffset, __entry->flags, __get_str(fence_kind))
 );
 
+TRACE_EVENT(amdgpu_gem_va_ioctl,
+	    TP_PROTO(struct drm_amdgpu_gem_va *args),
+	    TP_ARGS(args),
+	    TP_STRUCT__entry(
+			     __field(u32, syncobj)
+			     __field(u64, va_address)
+			     __field(u64, map_size)
+			     __field(u64, offset_in_bo)
+			     __field(u32, bo)
+			     __field(u32, flags)
+			     __field(u32, operation)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->syncobj = args->syncobj;
+			   __entry->va_address = args->va_address;
+			   __entry->map_size = args->map_size;
+			   __entry->offset_in_bo = args->offset_in_bo;
+			   __entry->bo = args->handle;
+			   __entry->flags = args->flags;
+			   __entry->operation = args->operation;
+			   ),
+	    TP_printk("operation=%s addr=%010llx size=%010llx bo=%d offset=%llx flags=%x(%s,%s) syncobj=%d", (__entry->operation == AMDGPU_VA_OP_MAP ? "map" : __entry->operation == AMDGPU_VA_OP_UNMAP ? "unmap" : __entry->operation == AMDGPU_VA_OP_CLEAR ? "clear" : "replace"), __entry->va_address, __entry->map_size, __entry->bo, __entry->offset_in_bo, __entry->flags, (__entry->flags & AMDGPU_VM_DELAY_UPDATE ? "delay" : ""), (__entry->flags & AMDGPU_VM_PAGE_PRT ? "prt" : ""), __entry->syncobj)
+);
+
 TRACE_EVENT(amdgpu_sync_vm_fence,
 	    TP_PROTO(const char *fence_kind),
 	    TP_ARGS(fence_kind),
