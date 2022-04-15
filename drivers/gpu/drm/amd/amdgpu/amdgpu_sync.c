@@ -179,10 +179,14 @@ int amdgpu_sync_fence(struct amdgpu_sync *sync, struct dma_fence *f)
  *
  * Add the fence to the sync object and remember it as VM update.
  */
-int amdgpu_sync_vm_fence(struct amdgpu_sync *sync, struct dma_fence *fence)
+int amdgpu_sync_vm_fence(struct amdgpu_sync *sync, struct dma_fence *fence, const char *name)
 {
 	if (!fence)
 		return 0;
+
+	if (!dma_fence_is_signaled(fence)) {
+		trace_amdgpu_sync_vm_fence(name);
+	}
 
 	amdgpu_sync_keep_later(&sync->last_vm_update, fence);
 	return amdgpu_sync_fence(sync, fence);

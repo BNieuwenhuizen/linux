@@ -356,6 +356,20 @@ TRACE_EVENT(amdgpu_vm_bo_clear,
 		      __entry->soffset, __entry->eoffset, __entry->flags, __get_str(fence_kind))
 );
 
+TRACE_EVENT(amdgpu_sync_vm_fence,
+	    TP_PROTO(const char *fence_kind),
+	    TP_ARGS(fence_kind),
+	    TP_STRUCT__entry(
+			     __string(fence_kind, fence_kind)
+			     ),
+
+	    TP_fast_assign(
+			   __assign_str(fence_kind, fence_kind);
+			   ),
+	    TP_printk("fence_kind=%s", __get_str(fence_kind))
+);
+
+
 TRACE_EVENT(amdgpu_vm_update_ptes,
 	    TP_PROTO(struct amdgpu_vm_update_params *p,
 		     uint64_t start, uint64_t end,
