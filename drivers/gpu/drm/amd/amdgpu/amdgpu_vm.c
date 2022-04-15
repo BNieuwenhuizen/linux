@@ -2390,6 +2390,8 @@ int amdgpu_vm_bo_map(struct amdgpu_device *adev,
  * @offset: requested offset in the BO
  * @size: BO size in bytes
  * @flags: attributes of pages (read/write/valid/etc.)
+ * @updated_bo_va: will be set to the (up to 2) bo_va's that have new shrunk
+ *                 mappings, or unchanged otherwise.
  *
  * Add a mapping of the BO at the specefied addr into the VM. Replace existing
  * mappings as we do so.
@@ -2402,7 +2404,8 @@ int amdgpu_vm_bo_map(struct amdgpu_device *adev,
 int amdgpu_vm_bo_replace_map(struct amdgpu_device *adev,
 			     struct amdgpu_bo_va *bo_va,
 			     uint64_t saddr, uint64_t offset,
-			     uint64_t size, uint64_t flags)
+			     uint64_t size, uint64_t flags,
+			     struct amdgpu_bo_va **updated_bo_va)
 {
 	struct amdgpu_bo_va_mapping *mapping;
 	struct amdgpu_bo *bo = bo_va->base.bo;
@@ -2426,7 +2429,8 @@ int amdgpu_vm_bo_replace_map(struct amdgpu_device *adev,
 	if (!mapping)
 		return -ENOMEM;
 
-	r = amdgpu_vm_bo_clear_mappings(adev, bo_va->base.vm, saddr, size);
+	r = amdgpu_vm_bo_clear_mappings(adev, bo_va->base.vm, saddr, size,
+					updated_bo_va);
 	if (r) {
 		kfree(mapping);
 		return r;
@@ -2500,12 +2504,52 @@ int amdgpu_vm_bo_unmap(struct amdgpu_device *adev,
 }
 
 /**
+ * amdgpu_vm_bo_clear_mappings_bo_va - determine bo_va of split mappings.
+ *
+ * @adev: amdgpu_device pointer
+ * @vm: VM structure to use
+ * @saddr: start of the range
+ * @size: size of the range
+ * @updated_bo_va: will be set to the (up to 2) bo_va's that have new shrunk
+ *                 mappings, or unchanged otherwise.
+ *
+ * Determines the bo_va of the split mappings that would result from
+ * amdgpu_vm_bo_clear_mappings.
+ */
+void amdgpu_vm_bo_clear_mappings_bo_va(struct amdgpu_device *adev,
+				       struct amdgpu_vm *vm,
+				       uint64_t saddr, uint64_t size,
+				       struct amdgpu_bo_va **updated_bo_va)
+{
+	struct amdgpu_bo_va_mapping *tmp;
+	uint64_t eaddr;
+
+	eaddr = saddr + size - 1;
+	saddr /= AMDGPU_GPU_PAGE_SIZE;
+	eaddr /= AMDGPU_GPU_PAGE_SIZE;
+
+	/* Now gather all removed mappings */
+	tmp = amdgpu_vm_it_iter_first(&vm->va, saddr, eaddr);
+	while (tmp) {
+		if (tmp->start < saddr)
+			*updated_bo_va++ = tmp->bo_va;
+
+		if (tmp->last > eaddr)
+			*updated_bo_va++ = tmp->bo_va;
+
+		tmp = amdgpu_vm_it_iter_next(tmp, saddr, eaddr);
+	}
+}
+
+/**
  * amdgpu_vm_bo_clear_mappings - remove all mappings in a specific range
  *
  * @adev: amdgpu_device pointer
  * @vm: VM structure to use
  * @saddr: start of the range
  * @size: size of the range
+ * @updated_bo_va: will be set to the (up to 2) bo_va's that have new shrunk
+ *                 mappings, or unchanged otherwise.
  *
  * Remove all mappings in a range, split them as appropriate.
  *
@@ -2514,7 +2558,8 @@ int amdgpu_vm_bo_unmap(struct amdgpu_device *adev,
  */
 int amdgpu_vm_bo_clear_mappings(struct amdgpu_device *adev,
 				struct amdgpu_vm *vm,
-				uint64_t saddr, uint64_t size)
+				uint64_t saddr, uint64_t size,
+				struct amdgpu_bo_va **updated_bo_va)
 {
 	struct amdgpu_bo_va_mapping *before, *after, *tmp, *next;
 	LIST_HEAD(removed);
@@ -2584,6 +2629,7 @@ int amdgpu_vm_bo_clear_mappings(struct amdgpu_device *adev,
 
 	/* Insert partial mapping before the range */
 	if (!list_empty(&before->list)) {
+		*updated_bo_va++ = before->bo_va;
 		amdgpu_vm_it_insert(before, &vm->va);
 		if (before->flags & AMDGPU_PTE_PRT)
 			amdgpu_vm_prt_get(adev);
@@ -2593,6 +2639,7 @@ int amdgpu_vm_bo_clear_mappings(struct amdgpu_device *adev,
 
 	/* Insert partial mapping after the range */
 	if (!list_empty(&after->list)) {
+		*updated_bo_va++ = after->bo_va;
 		amdgpu_vm_it_insert(after, &vm->va);
 		if (after->flags & AMDGPU_PTE_PRT)
 			amdgpu_vm_prt_get(adev);

@@ -608,10 +608,11 @@ out:
 static void amdgpu_gem_va_update_vm(struct amdgpu_device *adev,
 				    struct amdgpu_vm *vm,
 				    struct amdgpu_bo_va *bo_va,
+				    struct amdgpu_bo_va **old_bo_va,
 				    uint32_t operation,
 				    struct dma_fence **last_update)
 {
-	int r;
+	int r, i;
 
 	if (!amdgpu_vm_ready(vm))
 		return;
@@ -623,6 +624,19 @@ static void amdgpu_gem_va_update_vm(struct amdgpu_device *adev,
 	if (operation == AMDGPU_VA_OP_MAP ||
 	    operation == AMDGPU_VA_OP_REPLACE) {
 		r = amdgpu_vm_bo_update(adev, bo_va, false, NULL, last_update);
+		if (r)
+			goto error;
+	} else {
+		bo_va = NULL;
+	}
+
+	for (i = 0; i < 2 && old_bo_va[i]; ++i) {
+		if (old_bo_va[i] == bo_va ||
+		    (i && old_bo_va[i - 1] == old_bo_va[i]))
+			continue;
+
+		r = amdgpu_vm_bo_update(adev, old_bo_va[i], false, NULL,
+					last_update);
 		if (r)
 			goto error;
 	}
@@ -680,6 +694,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	struct drm_syncobj *syncobj = NULL;
 	struct amdgpu_bo *abo;
 	struct amdgpu_bo_va *bo_va;
+	struct amdgpu_bo_va *old_bo_va[2] = {NULL, NULL};
 	struct amdgpu_bo_list_entry vm_pd;
 	struct ttm_validate_buffer tv;
 	struct ww_acquire_ctx ticket;
@@ -786,9 +801,19 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		 * Update the VM once before to make sure there are no other
 		 * pending updates.
 		 */
-		if (!(args->flags & AMDGPU_VM_DELAY_UPDATE))
+		if (!(args->flags & AMDGPU_VM_DELAY_UPDATE)) {
+			if (args->operation == AMDGPU_VA_OP_CLEAR ||
+			    args->operation == AMDGPU_VA_OP_REPLACE) {
+				amdgpu_vm_bo_clear_mappings_bo_va(adev, &fpriv->vm,
+								  args->va_address,
+								  args->map_size,
+								  old_bo_va);
+			}
+
 			amdgpu_gem_va_update_vm(adev, &fpriv->vm, bo_va,
-						args->operation, NULL);
+						old_bo_va, args->operation,
+						NULL);
+		}
 	}
 
 	switch (args->operation) {
@@ -805,13 +830,13 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	case AMDGPU_VA_OP_CLEAR:
 		r = amdgpu_vm_bo_clear_mappings(adev, &fpriv->vm,
 						args->va_address,
-						args->map_size);
+						args->map_size, old_bo_va);
 		break;
 	case AMDGPU_VA_OP_REPLACE:
 		va_flags = amdgpu_gem_va_map_flags(adev, args->flags);
 		r = amdgpu_vm_bo_replace_map(adev, bo_va, args->va_address,
 					     args->offset_in_bo, args->map_size,
-					     va_flags);
+					     va_flags, old_bo_va);
 		break;
 	default:
 		dev_dbg(dev->dev, "unsupported operation %d\n",
@@ -823,7 +848,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		goto error_free_chain;
 
 	if (!(args->flags & AMDGPU_VM_DELAY_UPDATE))
-		amdgpu_gem_va_update_vm(adev, &fpriv->vm, bo_va,
+		amdgpu_gem_va_update_vm(adev, &fpriv->vm, bo_va, old_bo_va,
 					args->operation, syncobj ?
 					&fence : NULL);
 

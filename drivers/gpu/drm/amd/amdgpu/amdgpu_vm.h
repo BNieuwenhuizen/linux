@@ -427,13 +427,19 @@ int amdgpu_vm_bo_map(struct amdgpu_device *adev,
 int amdgpu_vm_bo_replace_map(struct amdgpu_device *adev,
 			     struct amdgpu_bo_va *bo_va,
 			     uint64_t addr, uint64_t offset,
-			     uint64_t size, uint64_t flags);
+			     uint64_t size, uint64_t flags,
+			     struct amdgpu_bo_va **updated_bo_va);
 int amdgpu_vm_bo_unmap(struct amdgpu_device *adev,
 		       struct amdgpu_bo_va *bo_va,
 		       uint64_t addr);
 int amdgpu_vm_bo_clear_mappings(struct amdgpu_device *adev,
 				struct amdgpu_vm *vm,
-				uint64_t saddr, uint64_t size);
+				uint64_t saddr, uint64_t size,
+				struct amdgpu_bo_va **updated_bo_va);
+void amdgpu_vm_bo_clear_mappings_bo_va(struct amdgpu_device *adev,
+				       struct amdgpu_vm *vm,
+				       uint64_t saddr, uint64_t size,
+				       struct amdgpu_bo_va **updated_bo_va);
 struct amdgpu_bo_va_mapping *amdgpu_vm_bo_lookup_mapping(struct amdgpu_vm *vm,
 							 uint64_t addr);
 void amdgpu_vm_bo_trace_cs(struct amdgpu_vm *vm, struct ww_acquire_ctx *ticket);
