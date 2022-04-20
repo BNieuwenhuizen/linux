@@ -513,12 +513,19 @@ struct dma_fence *dma_resv_iter_next(struct dma_resv_iter *cursor)
 	dma_resv_assert_held(cursor->obj);
 
 	cursor->is_restarted = false;
-	if (!cursor->fences || cursor->index >= cursor->fences->num_fences)
+	if (!cursor->fences)
 		return NULL;
 
-	dma_resv_list_entry(cursor->fences, cursor->index++,
-			    cursor->obj, &fence, &cursor->fence_usage);
-	return fence;
+	for (;;) {
+		if (cursor->index >= cursor->fences->num_fences)
+			return NULL;
+
+		dma_resv_list_entry(cursor->fences, cursor->index++,
+				    cursor->obj, &fence, &cursor->fence_usage);
+		if (cursor->usage >= cursor->fence_usage) {
+			return fence;
+		}
+	}
 }
 EXPORT_SYMBOL_GPL(dma_resv_iter_next);
 
