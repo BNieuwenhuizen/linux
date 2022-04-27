@@ -621,17 +621,19 @@ static void amdgpu_vm_pt_next_dfs(struct amdgpu_device *adev,
  * @vm: vm providing the BOs
  * @validated: head of validation list
  * @entry: entry to add
+ * @resv_usage: resv usage for the synchronization
  *
  * Add the page directory to the list of BOs to
  * validate for command submission.
  */
 void amdgpu_vm_get_pd_bo(struct amdgpu_vm *vm,
 			 struct list_head *validated,
-			 struct amdgpu_bo_list_entry *entry)
+			 struct amdgpu_bo_list_entry *entry,
+			 enum dma_resv_usage resv_usage)
 {
 	entry->priority = 0;
 	entry->tv.bo = &vm->root.bo->tbo;
-	entry->tv.usage = DMA_RESV_USAGE_READ;
+	entry->tv.usage = resv_usage;
 	entry->user_pages = NULL;
 	list_add(&entry->tv.head, validated);
 }
