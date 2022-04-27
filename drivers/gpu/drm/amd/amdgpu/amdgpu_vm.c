@@ -313,19 +313,21 @@ void amdgpu_vm_bo_base_init(struct amdgpu_vm_bo_base *base,
  * @vm: vm providing the BOs
  * @validated: head of validation list
  * @entry: entry to add
+ * @resv_usage: resv usage for the synchronization
  *
  * Add the page directory to the list of BOs to
  * validate for command submission.
  */
 void amdgpu_vm_get_pd_bo(struct amdgpu_vm *vm,
 			 struct list_head *validated,
-			 struct amdgpu_bo_list_entry *entry)
+			 struct amdgpu_bo_list_entry *entry,
+			 enum dma_resv_usage resv_usage)
 {
 	entry->priority = 0;
 	entry->tv.bo = &vm->root.bo->tbo;
 	/* Two for VM updates, one for TTM and one for the CS job */
 	entry->tv.num_shared = 4;
-	entry->tv.usage = DMA_RESV_USAGE_READ;
+	entry->tv.usage = resv_usage;
 	entry->user_pages = NULL;
 	list_add(&entry->tv.head, validated);
 }

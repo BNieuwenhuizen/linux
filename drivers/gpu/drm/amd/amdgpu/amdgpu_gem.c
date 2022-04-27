@@ -211,7 +211,7 @@ static void amdgpu_gem_object_close(struct drm_gem_object *obj,
 	tv.usage = DMA_RESV_USAGE_READ;
 	list_add(&tv.head, &list);
 
-	amdgpu_vm_get_pd_bo(vm, &list, &vm_pd);
+	amdgpu_vm_get_pd_bo(vm, &list, &vm_pd, DMA_RESV_USAGE_READ);
 
 	r = ttm_eu_reserve_buffers(&ticket, &list, false, &duplicates);
 	if (r) {
@@ -747,7 +747,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		abo = NULL;
 	}
 
-	amdgpu_vm_get_pd_bo(&fpriv->vm, &list, &vm_pd);
+	amdgpu_vm_get_pd_bo(&fpriv->vm, &list, &vm_pd, DMA_RESV_USAGE_READ);
 
 	r = ttm_eu_reserve_buffers(&ticket, &list, true, &duplicates);
 	if (r)
