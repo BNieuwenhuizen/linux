@@ -996,6 +996,7 @@ int amdgpu_mes_ctx_map_meta_data(struct amdgpu_device *adev,
 
 	csa_tv.bo = &ctx_data->meta_data_obj->tbo;
 	csa_tv.num_shared = 1;
+	csa_tv.usage = DMA_RESV_USAGE_READ;
 
 	list_add(&csa_tv.head, &list);
 	amdgpu_vm_get_pd_bo(vm, &list, &pd);

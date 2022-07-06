@@ -184,6 +184,8 @@ static int radeon_cs_parser_relocs(struct radeon_cs_parser *p)
 
 		p->relocs[i].tv.bo = &p->relocs[i].robj->tbo;
 		p->relocs[i].tv.num_shared = !r->write_domain;
+		p->relocs[i].tv.usage = r->write_domain ? DMA_RESV_USAGE_WRITE :
+							  DMA_RESV_USAGE_READ;
 
 		radeon_cs_buckets_add(&buckets, &p->relocs[i].tv.head,
 				      priority);

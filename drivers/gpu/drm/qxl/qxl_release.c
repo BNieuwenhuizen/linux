@@ -184,6 +184,7 @@ int qxl_release_list_add(struct qxl_release *release, struct qxl_bo *bo)
 	qxl_bo_ref(bo);
 	entry->tv.bo = &bo->tbo;
 	entry->tv.num_shared = 0;
+	entry->tv.usage = DMA_RESV_USAGE_WRITE;
 	list_add_tail(&entry->tv.head, &release->bos);
 	return 0;
 }

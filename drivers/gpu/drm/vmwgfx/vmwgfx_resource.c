@@ -131,6 +131,7 @@ static void vmw_resource_release(struct kref *kref)
 
 			val_buf.bo = bo;
 			val_buf.num_shared = 0;
+			val_buf.usage = DMA_RESV_USAGE_WRITE;
 			res->func->unbind(res, false, &val_buf);
 		}
 		res->backup_dirty = false;
@@ -553,6 +554,7 @@ vmw_resource_check_buffer(struct ww_acquire_ctx *ticket,
 	ttm_bo_get(&res->backup->base);
 	val_buf->bo = &res->backup->base;
 	val_buf->num_shared = 0;
+	val_buf->usage = DMA_RESV_USAGE_WRITE;
 	list_add_tail(&val_buf->head, &val_list);
 	ret = ttm_eu_reserve_buffers(ticket, &val_list, interruptible, NULL);
 	if (unlikely(ret != 0))
@@ -658,6 +660,7 @@ static int vmw_resource_do_evict(struct ww_acquire_ctx *ticket,
 
 	val_buf.bo = NULL;
 	val_buf.num_shared = 0;
+	val_buf.usage = DMA_RESV_USAGE_WRITE;
 	ret = vmw_resource_check_buffer(ticket, res, interruptible, &val_buf);
 	if (unlikely(ret != 0))
 		return ret;
@@ -709,6 +712,7 @@ int vmw_resource_validate(struct vmw_resource *res, bool intr,
 
 	val_buf.bo = NULL;
 	val_buf.num_shared = 0;
+	val_buf.usage = DMA_RESV_USAGE_WRITE;
 	if (res->backup)
 		val_buf.bo = &res->backup->base;
 	do {
@@ -777,7 +781,8 @@ void vmw_resource_unbind_list(struct vmw_buffer_object *vbo)
 {
 	struct ttm_validate_buffer val_buf = {
 		.bo = &vbo->base,
-		.num_shared = 0
+		.num_shared = 0,
+		.usage = DMA_RESV_USAGE_WRITE
 	};
 
 	dma_resv_assert_held(vbo->base.base.resv);

@@ -144,6 +144,7 @@ struct radeon_bo_list *radeon_vm_get_bos(struct radeon_device *rdev,
 	list[0].allowed_domains = RADEON_GEM_DOMAIN_VRAM;
 	list[0].tv.bo = &vm->page_directory->tbo;
 	list[0].tv.num_shared = 1;
+	list[0].tv.usage = DMA_RESV_USAGE_READ;
 	list[0].tiling_flags = 0;
 	list_add(&list[0].tv.head, head);
 
@@ -156,6 +157,7 @@ struct radeon_bo_list *radeon_vm_get_bos(struct radeon_device *rdev,
 		list[idx].allowed_domains = RADEON_GEM_DOMAIN_VRAM;
 		list[idx].tv.bo = &list[idx].robj->tbo;
 		list[idx].tv.num_shared = 1;
+		list[idx].tv.usage = DMA_RESV_USAGE_READ;
 		list[idx].tiling_flags = 0;
 		list_add(&list[idx++].tv.head, head);
 	}

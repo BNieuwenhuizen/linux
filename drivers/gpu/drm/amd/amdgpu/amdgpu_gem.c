@@ -208,6 +208,7 @@ static void amdgpu_gem_object_close(struct drm_gem_object *obj,
 
 	tv.bo = &bo->tbo;
 	tv.num_shared = 2;
+	tv.usage = DMA_RESV_USAGE_READ;
 	list_add(&tv.head, &list);
 
 	amdgpu_vm_get_pd_bo(vm, &list, &vm_pd);
@@ -733,10 +734,13 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 			return -ENOENT;
 		abo = gem_to_amdgpu_bo(gobj);
 		tv.bo = &abo->tbo;
-		if (abo->flags & AMDGPU_GEM_CREATE_VM_ALWAYS_VALID)
+		if (abo->flags & AMDGPU_GEM_CREATE_VM_ALWAYS_VALID) {
 			tv.num_shared = 1;
-		else
+			tv.usage = DMA_RESV_USAGE_READ;
+		} else {
 			tv.num_shared = 0;
+			tv.usage = DMA_RESV_USAGE_WRITE;
+		}
 		list_add(&tv.head, &list);
 	} else {
 		gobj = NULL;

@@ -325,6 +325,7 @@ void amdgpu_vm_get_pd_bo(struct amdgpu_vm *vm,
 	entry->tv.bo = &vm->root.bo->tbo;
 	/* Two for VM updates, one for TTM and one for the CS job */
 	entry->tv.num_shared = 4;
+	entry->tv.usage = DMA_RESV_USAGE_READ;
 	entry->user_pages = NULL;
 	list_add(&entry->tv.head, validated);
 }

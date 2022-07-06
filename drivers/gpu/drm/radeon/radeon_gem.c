@@ -636,6 +636,7 @@ static void radeon_gem_va_update_vm(struct radeon_device *rdev,
 
 	tv.bo = &bo_va->bo->tbo;
 	tv.num_shared = 1;
+	tv.usage = DMA_RESV_USAGE_READ;
 	list_add(&tv.head, &list);
 
 	vm_bos = radeon_vm_get_bos(rdev, bo_va->vm, &list);

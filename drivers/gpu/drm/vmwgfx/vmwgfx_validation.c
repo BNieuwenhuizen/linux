@@ -289,6 +289,7 @@ int vmw_validation_add_bo(struct vmw_validation_context *ctx,
 		if (!val_buf->bo)
 			return -ESRCH;
 		val_buf->num_shared = 0;
+		val_buf->usage = DMA_RESV_USAGE_WRITE;
 		list_add_tail(&val_buf->head, &ctx->bo_list);
 		bo_node->as_mob = as_mob;
 		bo_node->cpu_blit = cpu_blit;
