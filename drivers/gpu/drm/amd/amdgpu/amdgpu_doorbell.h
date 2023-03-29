@@ -306,6 +306,28 @@ void amdgpu_mm_wdoorbell(struct amdgpu_device *adev, u32 index, u32 v);
 u64 amdgpu_mm_rdoorbell64(struct amdgpu_device *adev, u32 index);
 void amdgpu_mm_wdoorbell64(struct amdgpu_device *adev, u32 index, u64 v);
 
+/*
+ * GPU doorbell aperture helpers function.
+ */
+/**
+ * amdgpu_device_doorbell_init - Init doorbell driver information.
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * Init doorbell driver information (CIK)
+ * Returns 0 on success, error on failure.
+ */
+int amdgpu_device_doorbell_init(struct amdgpu_device *adev);
+
+/**
+ * amdgpu_device_doorbell_fini - Tear down doorbell driver information.
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * Tear down doorbell driver information (CIK)
+ */
+void amdgpu_device_doorbell_fini(struct amdgpu_device *adev);
+
 #define RDOORBELL32(index) amdgpu_mm_rdoorbell(adev, (index))
 #define WDOORBELL32(index, v) amdgpu_mm_wdoorbell(adev, (index), (v))
 #define RDOORBELL64(index) amdgpu_mm_rdoorbell64(adev, (index))
