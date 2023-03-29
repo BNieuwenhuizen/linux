@@ -22,6 +22,7 @@
  */
 #include "amdgpu.h"
 #include "amdgpu_userqueue.h"
+#include "v11_structs.h"
 
 #define AMDGPU_USERQ_PROC_CTX_SZ PAGE_SIZE
 #define AMDGPU_USERQ_GANG_CTX_SZ PAGE_SIZE
@@ -68,6 +69,22 @@ static void amdgpu_userq_gfx_v11_destroy_ctx_space(struct amdgpu_userq_mgr *uq_m
                           &ctx->cpu_ptr);
 }
 
+static void
+amdgpu_userq_set_ctx_space(struct amdgpu_userq_mgr *uq_mgr,
+                           struct amdgpu_usermode_queue *queue)
+{
+    struct v11_gfx_mqd *mqd = queue->mqd.cpu_ptr;
+
+    mqd->shadow_base_lo = queue->shadow_ctx_gpu_addr & 0xfffffffc;
+    mqd->shadow_base_hi = upper_32_bits(queue->shadow_ctx_gpu_addr);
+
+    mqd->gds_bkup_base_lo = queue->gds_ctx_gpu_addr & 0xfffffffc;
+    mqd->gds_bkup_base_hi = upper_32_bits(queue->gds_ctx_gpu_addr);
+
+    mqd->fw_work_area_base_lo = queue->fw_ctx_gpu_addr & 0xfffffffc;
+    mqd->fw_work_area_base_lo = upper_32_bits(queue->fw_ctx_gpu_addr);
+}
+
 static int
 amdgpu_userq_gfx_v11_mqd_create(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_usermode_queue *queue)
 {
@@ -104,12 +121,14 @@ amdgpu_userq_gfx_v11_mqd_create(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_u
     queue->userq_prop.use_doorbell = true;
     queue->userq_prop.mqd_gpu_addr = mqd->gpu_addr;
     r = gfx_v11_mqd->init_mqd(adev, (void *)mqd->cpu_ptr, &queue->userq_prop);
-    amdgpu_bo_unreserve(mqd->obj);
     if (r) {
+        amdgpu_bo_unreserve(mqd->obj);
         DRM_ERROR("Failed to init MQD for queue\n");
         goto free_ctx;
     }
 
+    amdgpu_userq_set_ctx_space(uq_mgr, queue);
+    amdgpu_bo_unreserve(mqd->obj);
     DRM_DEBUG_DRIVER("MQD for queue %d created\n", queue->queue_id);
     return 0;
 
