@@ -23,6 +23,51 @@
 #include "amdgpu.h"
 #include "amdgpu_userqueue.h"
 
+#define AMDGPU_USERQ_PROC_CTX_SZ PAGE_SIZE
+#define AMDGPU_USERQ_GANG_CTX_SZ PAGE_SIZE
+#define AMDGPU_USERQ_FW_CTX_SZ PAGE_SIZE
+#define AMDGPU_USERQ_GDS_CTX_SZ PAGE_SIZE
+
+static int amdgpu_userq_gfx_v11_create_ctx_space(struct amdgpu_userq_mgr *uq_mgr,
+                                                 struct amdgpu_usermode_queue *queue)
+{
+    struct amdgpu_device *adev = uq_mgr->adev;
+    struct amdgpu_userq_ctx_space *ctx = &queue->fw_space;
+    int r, size;
+
+    /*
+     * The FW expects atleast one page space allocated for
+     * process ctx, gang ctx, gds ctx, fw ctx and shadow ctx each.
+     */
+    size = AMDGPU_USERQ_PROC_CTX_SZ + AMDGPU_USERQ_GANG_CTX_SZ +
+           AMDGPU_USERQ_FW_CTX_SZ + AMDGPU_USERQ_GDS_CTX_SZ;
+    r = amdgpu_bo_create_kernel(adev, size, PAGE_SIZE,
+                                AMDGPU_GEM_DOMAIN_GTT,
+                                &ctx->obj,
+                                &ctx->gpu_addr,
+                                &ctx->cpu_ptr);
+    if (r) {
+        DRM_ERROR("Failed to allocate ctx space bo for userqueue, err:%d\n", r);
+        return r;
+    }
+
+    queue->proc_ctx_gpu_addr = ctx->gpu_addr;
+    queue->gang_ctx_gpu_addr = queue->proc_ctx_gpu_addr + AMDGPU_USERQ_PROC_CTX_SZ;
+    queue->fw_ctx_gpu_addr = queue->gang_ctx_gpu_addr + AMDGPU_USERQ_GANG_CTX_SZ;
+    queue->gds_ctx_gpu_addr = queue->fw_ctx_gpu_addr + AMDGPU_USERQ_FW_CTX_SZ;
+    return 0;
+}
+
+static void amdgpu_userq_gfx_v11_destroy_ctx_space(struct amdgpu_userq_mgr *uq_mgr,
+                                                   struct amdgpu_usermode_queue *queue)
+{
+    struct amdgpu_userq_ctx_space *ctx = &queue->fw_space;
+
+    amdgpu_bo_free_kernel(&ctx->obj,
+                          &ctx->gpu_addr,
+                          &ctx->cpu_ptr);
+}
+
 static int
 amdgpu_userq_gfx_v11_mqd_create(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_usermode_queue *queue)
 {
@@ -43,10 +88,17 @@ amdgpu_userq_gfx_v11_mqd_create(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_u
     }
 
     memset(mqd->cpu_ptr, 0, size);
+
+    r = amdgpu_userq_gfx_v11_create_ctx_space(uq_mgr, queue);
+    if (r) {
+        DRM_ERROR("Failed to create CTX space for userqueue (%d)\n", r);
+        goto free_mqd;
+    }
+
     r = amdgpu_bo_reserve(mqd->obj, false);
     if (unlikely(r != 0)) {
         DRM_ERROR("Failed to reserve mqd for userqueue (%d)", r);
-        goto free_mqd;
+        goto free_ctx;
     }
 
     queue->userq_prop.use_doorbell = true;
@@ -55,11 +107,14 @@ amdgpu_userq_gfx_v11_mqd_create(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_u
     amdgpu_bo_unreserve(mqd->obj);
     if (r) {
         DRM_ERROR("Failed to init MQD for queue\n");
-        goto free_mqd;
+        goto free_ctx;
     }
 
     DRM_DEBUG_DRIVER("MQD for queue %d created\n", queue->queue_id);
     return 0;
+
+free_ctx:
+    amdgpu_userq_gfx_v11_destroy_ctx_space(uq_mgr, queue);
 
 free_mqd:
     amdgpu_bo_free_kernel(&mqd->obj,
@@ -73,6 +128,7 @@ amdgpu_userq_gfx_v11_mqd_destroy(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_
 {
     struct amdgpu_userq_ctx_space *mqd = &queue->mqd;
 
+    amdgpu_userq_gfx_v11_destroy_ctx_space(uq_mgr, queue);
     amdgpu_bo_free_kernel(&mqd->obj,
 			   &mqd->gpu_addr,
 			   &mqd->cpu_ptr);

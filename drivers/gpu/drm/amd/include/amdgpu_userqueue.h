@@ -38,10 +38,17 @@ struct amdgpu_usermode_queue {
 	int queue_type;
 	uint64_t flags;
 	uint64_t doorbell_handle;
+	uint64_t proc_ctx_gpu_addr;
+	uint64_t gang_ctx_gpu_addr;
+	uint64_t gds_ctx_gpu_addr;
+	uint64_t fw_ctx_gpu_addr;
+	uint64_t shadow_ctx_gpu_addr;
+
 	struct amdgpu_vm *vm;
 	struct amdgpu_userq_mgr *userq_mgr;
 	struct amdgpu_mqd_prop userq_prop;
 	struct amdgpu_userq_ctx_space mqd;
+	struct amdgpu_userq_ctx_space fw_space;
 };
 
 struct amdgpu_userq_funcs {

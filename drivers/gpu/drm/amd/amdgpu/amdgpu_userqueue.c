@@ -71,6 +71,7 @@ static int amdgpu_userqueue_create(struct drm_file *filp, union drm_amdgpu_userq
     queue->userq_prop.queue_size = mqd_in->queue_size;
 
     queue->doorbell_handle = mqd_in->doorbell_handle;
+    queue->shadow_ctx_gpu_addr = mqd_in->shadow_va;
     queue->queue_type = mqd_in->ip_type;
     queue->flags = mqd_in->flags;
     queue->vm = &fpriv->vm;
