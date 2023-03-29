@@ -383,6 +383,21 @@ int amdgpu_doorbell_alloc_page(struct amdgpu_device *adev,
  */
 int amdgpu_doorbell_create_kernel_doorbells(struct amdgpu_device *adev);
 
+/**
+ * amdgpu_doorbell_index_on_bar - Find doorbell's absolute offset in BAR
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * @db_bo: doorbell object's bo
+ *
+ * @db_index: doorbell relative index in this doorbell object
+ *
+ * returns doorbell's absolute index in BAR
+ */
+uint32_t amdgpu_doorbell_index_on_bar(struct amdgpu_device *adev,
+				       struct amdgpu_bo *db_bo,
+				       uint32_t doorbell_index);
+
 #define RDOORBELL32(index) amdgpu_mm_rdoorbell(adev, (index))
 #define WDOORBELL32(index, v) amdgpu_mm_wdoorbell(adev, (index), (v))
 #define RDOORBELL64(index) amdgpu_mm_rdoorbell64(adev, (index))
