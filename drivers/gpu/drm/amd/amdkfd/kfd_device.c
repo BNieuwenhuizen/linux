@@ -426,8 +426,8 @@ struct kfd_dev *kgd2kfd_probe(struct amdgpu_device *adev, bool vf)
 	atomic_set(&kfd->compute_profile, 0);
 
 	mutex_init(&kfd->doorbell_mutex);
-	memset(&kfd->doorbell_available_index, 0,
-		sizeof(kfd->doorbell_available_index));
+	memset(kfd->kernel_doorbells.doorbell_bitmap, 0,
+	       kfd->kernel_doorbells.size / BITS_PER_LONG);
 
 	atomic_set(&kfd->sram_ecc_flag, 0);
 

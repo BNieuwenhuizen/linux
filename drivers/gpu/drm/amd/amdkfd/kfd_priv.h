@@ -349,6 +349,9 @@ struct kfd_dev {
 
 	/* HMM page migration MEMORY_DEVICE_PRIVATE mapping */
 	struct dev_pagemap pgmap;
+
+	/* Kernel doorbells for KFD device */
+	struct amdgpu_doorbell_obj kernel_doorbells;
 };
 
 enum kfd_mempool {
