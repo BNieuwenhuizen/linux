@@ -23,11 +23,72 @@
 #include "amdgpu.h"
 #include "amdgpu_userqueue.h"
 #include "v11_structs.h"
+#include "amdgpu_mes.h"
 
 #define AMDGPU_USERQ_PROC_CTX_SZ PAGE_SIZE
 #define AMDGPU_USERQ_GANG_CTX_SZ PAGE_SIZE
 #define AMDGPU_USERQ_FW_CTX_SZ PAGE_SIZE
 #define AMDGPU_USERQ_GDS_CTX_SZ PAGE_SIZE
+
+static int
+amdgpu_userq_gfx_v11_map(struct amdgpu_userq_mgr *uq_mgr,
+                         struct amdgpu_usermode_queue *queue)
+{
+    struct amdgpu_device *adev = uq_mgr->adev;
+    struct mes_add_queue_input queue_input;
+    int r;
+
+    memset(&queue_input, 0x0, sizeof(struct mes_add_queue_input));
+
+    queue_input.process_va_start = 0;
+    queue_input.process_va_end = (adev->vm_manager.max_pfn - 1) << AMDGPU_GPU_PAGE_SHIFT;
+    queue_input.process_quantum = 100000; /* 10ms */
+    queue_input.gang_quantum = 10000; /* 1ms */
+    queue_input.paging = false;
+
+    queue_input.gang_context_addr = queue->gang_ctx_gpu_addr;
+    queue_input.process_context_addr = queue->proc_ctx_gpu_addr;
+    queue_input.inprocess_gang_priority = AMDGPU_MES_PRIORITY_LEVEL_NORMAL;
+    queue_input.gang_global_priority_level = AMDGPU_MES_PRIORITY_LEVEL_NORMAL;
+
+    queue_input.process_id = queue->vm->pasid;
+    queue_input.queue_type = queue->queue_type;
+    queue_input.mqd_addr = queue->mqd.gpu_addr;
+    queue_input.wptr_addr = queue->userq_prop.wptr_gpu_addr;
+    queue_input.queue_size = queue->userq_prop.queue_size >> 2;
+    queue_input.doorbell_offset = queue->userq_prop.doorbell_index;
+    queue_input.page_table_base_addr = amdgpu_gmc_pd_addr(queue->vm->root.bo);
+
+    amdgpu_mes_lock(&adev->mes);
+    r = adev->mes.funcs->add_hw_queue(&adev->mes, &queue_input);
+    amdgpu_mes_unlock(&adev->mes);
+    if (r) {
+        DRM_ERROR("Failed to map queue in HW, err (%d)\n", r);
+        return r;
+    }
+
+    DRM_DEBUG_DRIVER("Queue %d mapped successfully\n", queue->queue_id);
+    return 0;
+}
+
+static void
+amdgpu_userq_gfx_v11_unmap(struct amdgpu_userq_mgr *uq_mgr,
+                           struct amdgpu_usermode_queue *queue)
+{
+    struct amdgpu_device *adev = uq_mgr->adev;
+    struct mes_remove_queue_input queue_input;
+    int r;
+
+    memset(&queue_input, 0x0, sizeof(struct mes_remove_queue_input));
+    queue_input.doorbell_offset = queue->userq_prop.doorbell_index;
+    queue_input.gang_context_addr = queue->gang_ctx_gpu_addr;
+
+    amdgpu_mes_lock(&adev->mes);
+    r = adev->mes.funcs->remove_hw_queue(&adev->mes, &queue_input);
+    amdgpu_mes_unlock(&adev->mes);
+    if (r)
+        DRM_ERROR("Failed to unmap queue in HW, err (%d)\n", r);
+}
 
 static int amdgpu_userq_gfx_v11_create_ctx_space(struct amdgpu_userq_mgr *uq_mgr,
                                                  struct amdgpu_usermode_queue *queue)
@@ -129,6 +190,14 @@ amdgpu_userq_gfx_v11_mqd_create(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_u
 
     amdgpu_userq_set_ctx_space(uq_mgr, queue);
     amdgpu_bo_unreserve(mqd->obj);
+
+    /* Map the queue in HW using MES ring */
+    r = amdgpu_userq_gfx_v11_map(uq_mgr, queue);
+    if (r) {
+        DRM_ERROR("Failed to map userqueue (%d)\n", r);
+        goto free_ctx;
+    }
+
     DRM_DEBUG_DRIVER("MQD for queue %d created\n", queue->queue_id);
     return 0;
 
@@ -147,6 +216,7 @@ amdgpu_userq_gfx_v11_mqd_destroy(struct amdgpu_userq_mgr *uq_mgr, struct amdgpu_
 {
     struct amdgpu_userq_ctx_space *mqd = &queue->mqd;
 
+    amdgpu_userq_gfx_v11_unmap(uq_mgr, queue);
     amdgpu_userq_gfx_v11_destroy_ctx_space(uq_mgr, queue);
     amdgpu_bo_free_kernel(&mqd->obj,
 			   &mqd->gpu_addr,
