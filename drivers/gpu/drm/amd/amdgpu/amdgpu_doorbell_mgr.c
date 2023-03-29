@@ -111,6 +111,55 @@ void amdgpu_mm_wdoorbell64(struct amdgpu_device *adev, u32 index, u64 v)
 	}
 }
 
+/**
+ * amdgpu_doorbell_free_page - Free a doorbell page
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * @db_age: previously allocated doobell page details
+ *
+ */
+void amdgpu_doorbell_free_page(struct amdgpu_device *adev,
+					struct amdgpu_doorbell_obj *db_obj)
+{
+	amdgpu_bo_free_kernel(&db_obj->bo,
+			      &db_obj->gpu_addr,
+			      (void **)&db_obj->cpu_addr);
+
+}
+
+/**
+ * amdgpu_doorbell_alloc_page - create a page from doorbell pool
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * @db_age: doobell page structure to fill details with
+ *
+ * returns 0 on success, else error number
+ */
+int amdgpu_doorbell_alloc_page(struct amdgpu_device *adev,
+				struct amdgpu_doorbell_obj *db_obj)
+{
+	int r;
+
+	db_obj->size = ALIGN(db_obj->size, PAGE_SIZE);
+
+	r = amdgpu_bo_create_kernel(adev,
+				    db_obj->size,
+				    PAGE_SIZE,
+				    AMDGPU_GEM_DOMAIN_DOORBELL,
+				    &db_obj->bo,
+				    &db_obj->gpu_addr,
+				    (void **)&db_obj->cpu_addr);
+
+	if (r) {
+		DRM_ERROR("Failed to create doorbell BO, err=%d\n", r);
+		return r;
+	}
+
+	return 0;
+}
+
 /*
  * GPU doorbell aperture helpers function.
  */

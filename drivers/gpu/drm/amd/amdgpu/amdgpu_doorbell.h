@@ -27,6 +27,24 @@
 /*
  * GPU doorbell structures, functions & helpers
  */
+
+/* Structure to hold doorbell pages from PCI doorbell BAR */
+struct amdgpu_doorbell_obj {
+	struct amdgpu_bo *bo;
+	uint64_t gpu_addr;
+	uint32_t *cpu_addr;
+	uint32_t size;
+
+	/* First index in this object */
+	uint32_t start;
+
+	/* Last index in this object */
+	uint32_t end;
+
+	/* bitmap for dynamic doorbell allocation from this object */
+	unsigned long *doorbell_bitmap;
+};
+
 struct amdgpu_doorbell {
 	/* doorbell mmio */
 	resource_size_t		base;
@@ -327,6 +345,29 @@ int amdgpu_device_doorbell_init(struct amdgpu_device *adev);
  * Tear down doorbell driver information (CIK)
  */
 void amdgpu_device_doorbell_fini(struct amdgpu_device *adev);
+
+/**
+ * amdgpu_doorbell_free_page - Free a doorbell page
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * @db_age: previously allocated doobell page details
+ *
+ */
+void amdgpu_doorbell_free_page(struct amdgpu_device *adev,
+				struct amdgpu_doorbell_obj *db_obj);
+
+/**
+ * amdgpu_doorbell_alloc_page - create a page from doorbell pool
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * @db_age: doobell page structure to fill details with
+ *
+ * returns 0 on success, else error number
+ */
+int amdgpu_doorbell_alloc_page(struct amdgpu_device *adev,
+				struct amdgpu_doorbell_obj *db_obj);
 
 #define RDOORBELL32(index) amdgpu_mm_rdoorbell(adev, (index))
 #define WDOORBELL32(index, v) amdgpu_mm_wdoorbell(adev, (index), (v))
