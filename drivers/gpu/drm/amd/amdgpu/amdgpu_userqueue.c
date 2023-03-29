@@ -43,6 +43,32 @@ amdgpu_userqueue_find(struct amdgpu_userq_mgr *uq_mgr, int qid)
     return idr_find(&uq_mgr->userq_idr, qid);
 }
 
+static uint64_t
+amdgpu_userqueue_get_doorbell_index(struct amdgpu_userq_mgr *uq_mgr,
+                                    struct amdgpu_usermode_queue *queue,
+                                    struct drm_file *filp,
+                                    uint32_t doorbell_index)
+{
+    struct drm_gem_object *gobj;
+    struct amdgpu_bo *db_bo;
+    uint64_t index;
+
+    gobj = drm_gem_object_lookup(filp, queue->doorbell_handle);
+    if (gobj == NULL) {
+        DRM_ERROR("Can't find GEM object for doorbell\n");
+        return -EINVAL;
+    }
+
+    db_bo = amdgpu_bo_ref(gem_to_amdgpu_bo(gobj));
+    drm_gem_object_put(gobj);
+
+    index = amdgpu_doorbell_index_on_bar(uq_mgr->adev, db_bo, doorbell_index);
+
+    DRM_DEBUG_DRIVER("[Usermode queues] doorbell index=%lld\n", index);
+
+    return index;
+}
+
 static int
 amdgpu_userqueue_map_gtt_bo_to_gart(struct amdgpu_device *adev, struct amdgpu_bo *bo)
 {
@@ -132,6 +158,7 @@ static int amdgpu_userqueue_create(struct drm_file *filp, union drm_amdgpu_userq
     struct amdgpu_fpriv *fpriv = filp->driver_priv;
     struct amdgpu_userq_mgr *uq_mgr = &fpriv->userq_mgr;
     struct drm_amdgpu_userq_mqd *mqd_in = &args->in.mqd;
+    uint64_t index;
     int r;
 
     /* Do we have support userqueues for this IP ? */
@@ -154,6 +181,14 @@ static int amdgpu_userqueue_create(struct drm_file *filp, union drm_amdgpu_userq
     queue->userq_prop.queue_size = mqd_in->queue_size;
 
     queue->doorbell_handle = mqd_in->doorbell_handle;
+    index = amdgpu_userqueue_get_doorbell_index(uq_mgr, queue, filp, mqd_in->doorbell_offset);
+    if (index == (uint64_t)-EINVAL) {
+        DRM_ERROR("Invalid doorbell object\n");
+        r = -EINVAL;
+        goto free_queue;
+    }
+
+    queue->userq_prop.doorbell_index = index;
     queue->shadow_ctx_gpu_addr = mqd_in->shadow_va;
     queue->queue_type = mqd_in->ip_type;
     queue->flags = mqd_in->flags;
