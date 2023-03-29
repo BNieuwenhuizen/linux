@@ -54,6 +54,7 @@ extern "C" {
 #define DRM_AMDGPU_VM			0x13
 #define DRM_AMDGPU_FENCE_TO_HANDLE	0x14
 #define DRM_AMDGPU_SCHED		0x15
+#define DRM_AMDGPU_USERQ		0x16
 
 #define DRM_IOCTL_AMDGPU_GEM_CREATE	DRM_IOWR(DRM_COMMAND_BASE + DRM_AMDGPU_GEM_CREATE, union drm_amdgpu_gem_create)
 #define DRM_IOCTL_AMDGPU_GEM_MMAP	DRM_IOWR(DRM_COMMAND_BASE + DRM_AMDGPU_GEM_MMAP, union drm_amdgpu_gem_mmap)
@@ -71,6 +72,7 @@ extern "C" {
 #define DRM_IOCTL_AMDGPU_VM		DRM_IOWR(DRM_COMMAND_BASE + DRM_AMDGPU_VM, union drm_amdgpu_vm)
 #define DRM_IOCTL_AMDGPU_FENCE_TO_HANDLE DRM_IOWR(DRM_COMMAND_BASE + DRM_AMDGPU_FENCE_TO_HANDLE, union drm_amdgpu_fence_to_handle)
 #define DRM_IOCTL_AMDGPU_SCHED		DRM_IOW(DRM_COMMAND_BASE + DRM_AMDGPU_SCHED, union drm_amdgpu_sched)
+#define DRM_IOCTL_AMDGPU_USERQ		DRM_IOW(DRM_COMMAND_BASE + DRM_AMDGPU_USERQ, union drm_amdgpu_userq)
 
 /**
  * DOC: memory domains
@@ -305,6 +307,59 @@ union drm_amdgpu_ctx_out {
 union drm_amdgpu_ctx {
 	struct drm_amdgpu_ctx_in in;
 	union drm_amdgpu_ctx_out out;
+};
+
+/* user queue IOCTL */
+#define AMDGPU_USERQ_OP_CREATE	1
+#define AMDGPU_USERQ_OP_FREE	2
+
+#define AMDGPU_USERQ_MQD_FLAGS_SECURE	(1 << 0)
+#define AMDGPU_USERQ_MQD_FLAGS_AQL	(1 << 1)
+
+struct drm_amdgpu_userq_mqd {
+	/** Flags: AMDGPU_USERQ_MQD_FLAGS_* */
+	__u32	flags;
+	/** IP type: AMDGPU_HW_IP_* */
+	__u32	ip_type;
+	/** GEM object handle */
+	__u32   doorbell_handle;
+	/** Doorbell's offset in the doorbell bo */
+	__u32   doorbell_offset;
+	/** GPU virtual address of the queue */
+	__u64   queue_va;
+	/** Size of the queue in bytes */
+	__u64   queue_size;
+	/** GPU virtual address of the rptr */
+	__u64   rptr_va;
+	/** GPU virtual address of the wptr */
+	__u64   wptr_va;
+	/** GPU virtual address of the shadow context space */
+	__u64	shadow_va;
+};
+
+struct drm_amdgpu_userq_in {
+	/** AMDGPU_USERQ_OP_* */
+	__u32	op;
+	/** Flags */
+	__u32	flags;
+	/** Queue handle to associate the queue free call with,
+	 * unused for queue create calls */
+	__u32	queue_id;
+	__u32	pad;
+	/** Queue descriptor */
+	struct drm_amdgpu_userq_mqd mqd;
+};
+
+struct drm_amdgpu_userq_out {
+	/** Queue handle */
+	__u32	queue_id;
+	/** Flags */
+	__u32	flags;
+};
+
+union drm_amdgpu_userq {
+	struct drm_amdgpu_userq_in in;
+	struct drm_amdgpu_userq_out out;
 };
 
 /* vm ioctl */
