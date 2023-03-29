@@ -22,6 +22,25 @@
  */
 
 #include "amdgpu.h"
+#include "kfd_priv.h"
+
+static inline
+bool amdgpu_doorbell_valid(struct amdgpu_device *adev, u32 index)
+{
+	if (index >= adev->doorbell.kernel_doorbells.start &&
+	    index < adev->doorbell.kernel_doorbells.end)
+		return true;
+
+	if (index >= adev->mes.kernel_doorbells.start &&
+	    index < adev->mes.kernel_doorbells.end)
+		return true;
+
+	if (index >= adev->kfd.dev->kernel_doorbells.start &&
+	    index < adev->kfd.dev->kernel_doorbells.end)
+		return true;
+
+	return false;
+}
 
 /**
  * amdgpu_mm_rdoorbell - read a doorbell dword
@@ -37,7 +56,7 @@ u32 amdgpu_mm_rdoorbell(struct amdgpu_device *adev, u32 index)
 	if (amdgpu_device_skip_hw_access(adev))
 		return 0;
 
-	if (index < adev->doorbell.num_kernel_doorbells) {
+	if (amdgpu_doorbell_valid(adev, index)) {
 		return readl(adev->doorbell.ptr + index);
 	} else {
 		DRM_ERROR("reading beyond doorbell aperture: 0x%08x!\n", index);
@@ -60,7 +79,7 @@ void amdgpu_mm_wdoorbell(struct amdgpu_device *adev, u32 index, u32 v)
 	if (amdgpu_device_skip_hw_access(adev))
 		return;
 
-	if (index < adev->doorbell.num_kernel_doorbells) {
+	if (amdgpu_doorbell_valid(adev, index)) {
 		writel(v, adev->doorbell.ptr + index);
 	} else {
 		DRM_ERROR("writing beyond doorbell aperture: 0x%08x!\n", index);
@@ -81,7 +100,7 @@ u64 amdgpu_mm_rdoorbell64(struct amdgpu_device *adev, u32 index)
 	if (amdgpu_device_skip_hw_access(adev))
 		return 0;
 
-	if (index < adev->doorbell.num_kernel_doorbells) {
+	if (amdgpu_doorbell_valid(adev, index)) {
 		return atomic64_read((atomic64_t *)(adev->doorbell.ptr + index));
 	} else {
 		DRM_ERROR("reading beyond doorbell aperture: 0x%08x!\n", index);
@@ -104,7 +123,7 @@ void amdgpu_mm_wdoorbell64(struct amdgpu_device *adev, u32 index, u64 v)
 	if (amdgpu_device_skip_hw_access(adev))
 		return;
 
-	if (index < adev->doorbell.num_kernel_doorbells) {
+	if (amdgpu_doorbell_valid(adev, index)) {
 		atomic64_set((atomic64_t *)(adev->doorbell.ptr + index), v);
 	} else {
 		DRM_ERROR("writing beyond doorbell aperture: 0x%08x!\n", index);
@@ -157,6 +176,8 @@ int amdgpu_doorbell_alloc_page(struct amdgpu_device *adev,
 		return r;
 	}
 
+	db_obj->start = amdgpu_doorbell_index_on_bar(adev, db_obj->bo, 0);
+	db_obj->end = db_obj->start + db_obj->size / sizeof(u32);
 	return 0;
 }
 
