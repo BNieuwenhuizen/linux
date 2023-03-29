@@ -362,7 +362,7 @@ static int allocate_doorbell(struct qcm_process_device *qpd,
 		/* For CP queues on SOC15 */
 		if (restore_id) {
 			/* make sure that ID is free  */
-			if (__test_and_set_bit(*restore_id, qpd->doorbell_bitmap))
+			if (__test_and_set_bit(*restore_id, qpd->proc_doorbells.doorbell_bitmap))
 				return -EINVAL;
 
 			q->doorbell_id = *restore_id;
@@ -370,20 +370,20 @@ static int allocate_doorbell(struct qcm_process_device *qpd,
 			/* or reserve a free doorbell ID */
 			unsigned int found;
 
-			found = find_first_zero_bit(qpd->doorbell_bitmap,
-						KFD_MAX_NUM_OF_QUEUES_PER_PROCESS);
+			found = find_first_zero_bit(qpd->proc_doorbells.doorbell_bitmap,
+						    KFD_MAX_NUM_OF_QUEUES_PER_PROCESS);
 			if (found >= KFD_MAX_NUM_OF_QUEUES_PER_PROCESS) {
 				pr_debug("No doorbells available");
 				return -EBUSY;
 			}
-			set_bit(found, qpd->doorbell_bitmap);
+			set_bit(found, qpd->proc_doorbells.doorbell_bitmap);
 			q->doorbell_id = found;
 		}
 	}
 
-	q->properties.doorbell_off =
-		kfd_get_doorbell_dw_offset_in_bar(dev, qpd_to_pdd(qpd),
-					  q->doorbell_id);
+	q->properties.doorbell_off = amdgpu_doorbell_index_on_bar(dev->adev,
+								  qpd->proc_doorbells.bo,
+								  q->doorbell_id);
 	return 0;
 }
 
@@ -398,7 +398,7 @@ static void deallocate_doorbell(struct qcm_process_device *qpd,
 	    q->properties.type == KFD_QUEUE_TYPE_SDMA_XGMI)
 		return;
 
-	old = test_and_clear_bit(q->doorbell_id, qpd->doorbell_bitmap);
+	old = test_and_clear_bit(q->doorbell_id, qpd->proc_doorbells.doorbell_bitmap);
 	WARN_ON(!old);
 }
 

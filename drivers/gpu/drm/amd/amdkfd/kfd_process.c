@@ -1037,10 +1037,9 @@ static void kfd_process_destroy_pdds(struct kfd_process *p)
 			free_pages((unsigned long)pdd->qpd.cwsr_kaddr,
 				get_order(KFD_CWSR_TBA_TMA_SIZE));
 
-		bitmap_free(pdd->qpd.doorbell_bitmap);
 		idr_destroy(&pdd->alloc_idr);
 
-		kfd_free_process_doorbells(pdd->dev, pdd->doorbell_index);
+		kfd_free_process_doorbells(pdd->dev, pdd);
 
 		if (pdd->dev->shared_resources.enable_mes)
 			amdgpu_amdkfd_free_gtt_mem(pdd->dev->adev,
@@ -1502,14 +1501,10 @@ static int init_doorbell_bitmap(struct qcm_process_device *qpd,
 	unsigned int i;
 	int range_start = dev->shared_resources.non_cp_doorbells_start;
 	int range_end = dev->shared_resources.non_cp_doorbells_end;
+	struct amdgpu_doorbell_obj *proc_doorbells = &qpd->proc_doorbells;
 
 	if (!KFD_IS_SOC15(dev))
 		return 0;
-
-	qpd->doorbell_bitmap = bitmap_zalloc(KFD_MAX_NUM_OF_QUEUES_PER_PROCESS,
-					     GFP_KERNEL);
-	if (!qpd->doorbell_bitmap)
-		return -ENOMEM;
 
 	/* Mask out doorbells reserved for SDMA, IH, and VCN on SOC15. */
 	pr_debug("reserved doorbell 0x%03x - 0x%03x\n", range_start, range_end);
@@ -1519,9 +1514,9 @@ static int init_doorbell_bitmap(struct qcm_process_device *qpd,
 
 	for (i = 0; i < KFD_MAX_NUM_OF_QUEUES_PER_PROCESS / 2; i++) {
 		if (i >= range_start && i <= range_end) {
-			__set_bit(i, qpd->doorbell_bitmap);
+			__set_bit(i, proc_doorbells->doorbell_bitmap);
 			__set_bit(i + KFD_QUEUE_DOORBELL_MIRROR_OFFSET,
-				  qpd->doorbell_bitmap);
+				  proc_doorbells->doorbell_bitmap);
 		}
 	}
 
@@ -1552,9 +1547,15 @@ struct kfd_process_device *kfd_create_process_device_data(struct kfd_dev *dev,
 	if (!pdd)
 		return NULL;
 
+	retval = kfd_alloc_process_doorbells(dev, pdd);
+	if (retval) {
+		pr_err("failed to allocate process doorbells\n");
+		goto err_free_pdd;
+	}
+
 	if (init_doorbell_bitmap(&pdd->qpd, dev)) {
 		pr_err("Failed to init doorbell for process\n");
-		goto err_free_pdd;
+		goto err_free_db;
 	}
 
 	pdd->dev = dev;
@@ -1582,7 +1583,7 @@ struct kfd_process_device *kfd_create_process_device_data(struct kfd_dev *dev,
 						false);
 		if (retval) {
 			pr_err("failed to allocate process context bo\n");
-			goto err_free_pdd;
+			goto err_free_db;
 		}
 		memset(pdd->proc_ctx_cpu_ptr, 0, AMDGPU_MES_PROC_CTX_SIZE);
 	}
@@ -1593,6 +1594,9 @@ struct kfd_process_device *kfd_create_process_device_data(struct kfd_dev *dev,
 	idr_init(&pdd->alloc_idr);
 
 	return pdd;
+
+err_free_db:
+	kfd_free_process_doorbells(pdd->dev, pdd);
 
 err_free_pdd:
 	kfree(pdd);
