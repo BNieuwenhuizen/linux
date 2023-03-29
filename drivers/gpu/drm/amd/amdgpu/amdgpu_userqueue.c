@@ -43,6 +43,89 @@ amdgpu_userqueue_find(struct amdgpu_userq_mgr *uq_mgr, int qid)
     return idr_find(&uq_mgr->userq_idr, qid);
 }
 
+static int
+amdgpu_userqueue_map_gtt_bo_to_gart(struct amdgpu_device *adev, struct amdgpu_bo *bo)
+{
+    int ret;
+
+    ret = amdgpu_bo_reserve(bo, true);
+    if (ret) {
+        DRM_ERROR("Failed to reserve bo. ret %d\n", ret);
+        goto err_reserve_bo_failed;
+    }
+
+    ret = amdgpu_bo_pin(bo, AMDGPU_GEM_DOMAIN_GTT);
+    if (ret) {
+        DRM_ERROR("Failed to pin bo. ret %d\n", ret);
+        goto err_pin_bo_failed;
+    }
+
+    ret = amdgpu_ttm_alloc_gart(&bo->tbo);
+    if (ret) {
+        DRM_ERROR("Failed to bind bo to GART. ret %d\n", ret);
+        goto err_map_bo_gart_failed;
+    }
+
+
+    amdgpu_bo_unreserve(bo);
+    bo = amdgpu_bo_ref(bo);
+
+    return 0;
+
+err_map_bo_gart_failed:
+    amdgpu_bo_unpin(bo);
+err_pin_bo_failed:
+    amdgpu_bo_unreserve(bo);
+err_reserve_bo_failed:
+
+    return ret;
+}
+
+
+static int
+amdgpu_userqueue_create_wptr_mapping(struct amdgpu_device *adev,
+				     struct drm_file *filp,
+				     struct amdgpu_usermode_queue *queue)
+{
+    struct amdgpu_bo_va_mapping *wptr_mapping;
+    struct amdgpu_vm *wptr_vm;
+    struct amdgpu_bo *wptr_bo = NULL;
+    uint64_t wptr = queue->userq_prop.wptr_gpu_addr;
+    int ret;
+
+    wptr_vm = queue->vm;
+    ret = amdgpu_bo_reserve(wptr_vm->root.bo, false);
+    if (ret)
+        goto err_wptr_map_gart;
+
+    wptr_mapping = amdgpu_vm_bo_lookup_mapping(wptr_vm, wptr >> PAGE_SHIFT);
+    amdgpu_bo_unreserve(wptr_vm->root.bo);
+    if (!wptr_mapping) {
+        DRM_ERROR("Failed to lookup wptr bo\n");
+        ret = -EINVAL;
+        goto err_wptr_map_gart;
+    }
+
+    wptr_bo = wptr_mapping->bo_va->base.bo;
+    if (wptr_bo->tbo.base.size > PAGE_SIZE) {
+        DRM_ERROR("Requested GART mapping for wptr bo larger than one page\n");
+        ret = -EINVAL;
+        goto err_wptr_map_gart;
+    }
+
+    ret = amdgpu_userqueue_map_gtt_bo_to_gart(adev, wptr_bo);
+    if (ret) {
+        DRM_ERROR("Failed to map wptr bo to GART\n");
+        goto err_wptr_map_gart;
+    }
+
+    queue->wptr_mc_addr = wptr_bo->tbo.resource->start << PAGE_SHIFT;
+    return 0;
+
+err_wptr_map_gart:
+    return ret;
+}
+
 static int amdgpu_userqueue_create(struct drm_file *filp, union drm_amdgpu_userq *args)
 {
     struct amdgpu_usermode_queue *queue;
@@ -79,6 +162,12 @@ static int amdgpu_userqueue_create(struct drm_file *filp, union drm_amdgpu_userq
     if (queue->queue_id < 0) {
         DRM_ERROR("Failed to allocate a queue id\n");
         r = queue->queue_id;
+        goto free_queue;
+    }
+
+    r = amdgpu_userqueue_create_wptr_mapping(uq_mgr->adev, filp, queue);
+    if (r) {
+        DRM_ERROR("Failed to map WPTR (0x%llx) for userqueue\n", queue->userq_prop.wptr_gpu_addr);
         goto free_queue;
     }
 

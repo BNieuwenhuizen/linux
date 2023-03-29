@@ -38,6 +38,7 @@ struct amdgpu_usermode_queue {
 	int queue_type;
 	uint64_t flags;
 	uint64_t doorbell_handle;
+	uint64_t wptr_mc_addr;
 	uint64_t proc_ctx_gpu_addr;
 	uint64_t gang_ctx_gpu_addr;
 	uint64_t gds_ctx_gpu_addr;

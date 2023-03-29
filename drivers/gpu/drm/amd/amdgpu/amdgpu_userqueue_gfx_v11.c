@@ -58,6 +58,7 @@ amdgpu_userq_gfx_v11_map(struct amdgpu_userq_mgr *uq_mgr,
     queue_input.queue_size = queue->userq_prop.queue_size >> 2;
     queue_input.doorbell_offset = queue->userq_prop.doorbell_index;
     queue_input.page_table_base_addr = amdgpu_gmc_pd_addr(queue->vm->root.bo);
+    queue_input.wptr_mc_addr = queue->wptr_mc_addr;
 
     amdgpu_mes_lock(&adev->mes);
     r = adev->mes.funcs->add_hw_queue(&adev->mes, &queue_input);
