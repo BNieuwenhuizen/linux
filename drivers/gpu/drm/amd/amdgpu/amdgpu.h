@@ -439,6 +439,14 @@ struct amdgpu_sa_manager {
 	uint32_t		align;
 };
 
+/* Gfx usermode queues */
+struct amdgpu_userq_mgr {
+	struct idr userq_idr;
+	struct mutex userq_mutex;
+	struct amdgpu_device *adev;
+	const struct amdgpu_userq_funcs *userq_funcs[AMDGPU_HW_IP_NUM];
+};
+
 /* sub-allocation buffer */
 struct amdgpu_sa_bo {
 	struct list_head		olist;
@@ -471,7 +479,6 @@ struct amdgpu_flip_work {
 	bool				async;
 };
 
-
 /*
  * file private structure
  */
@@ -483,6 +490,7 @@ struct amdgpu_fpriv {
 	struct mutex		bo_list_lock;
 	struct idr		bo_list_handles;
 	struct amdgpu_ctx_mgr	ctx_mgr;
+	struct amdgpu_userq_mgr	userq_mgr;
 };
 
 int amdgpu_file_to_fpriv(struct file *filp, struct amdgpu_fpriv **fpriv);
