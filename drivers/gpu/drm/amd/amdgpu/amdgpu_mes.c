@@ -67,89 +67,87 @@ unsigned int amdgpu_mes_get_doorbell_dw_offset_in_bar(
 		doorbell_id * 2);
 }
 
-static int amdgpu_mes_queue_doorbell_get(struct amdgpu_device *adev,
+static int amdgpu_mes_kernel_doorbell_get(struct amdgpu_device *adev,
 					 struct amdgpu_mes_process *process,
 					 int ip_type, uint64_t *doorbell_index)
 {
 	unsigned int offset, found;
+	struct amdgpu_doorbell_obj *doorbells = &adev->mes.kernel_doorbells;
 
-	if (ip_type == AMDGPU_RING_TYPE_SDMA) {
+	if (ip_type == AMDGPU_RING_TYPE_SDMA)
 		offset = adev->doorbell_index.sdma_engine[0];
-		found = find_next_zero_bit(process->doorbell_bitmap,
-					   AMDGPU_MES_MAX_NUM_OF_QUEUES_PER_PROCESS,
-					   offset);
-	} else {
-		found = find_first_zero_bit(process->doorbell_bitmap,
-					    AMDGPU_MES_MAX_NUM_OF_QUEUES_PER_PROCESS);
-	}
+	else
+		offset = 0;
 
+	found = find_next_zero_bit(doorbells->doorbell_bitmap,
+				   AMDGPU_MES_MAX_NUM_OF_QUEUES_PER_PROCESS,
+				   offset);
 	if (found >= AMDGPU_MES_MAX_NUM_OF_QUEUES_PER_PROCESS) {
 		DRM_WARN("No doorbell available\n");
 		return -ENOSPC;
 	}
 
-	set_bit(found, process->doorbell_bitmap);
+	set_bit(found, doorbells->doorbell_bitmap);
 
-	*doorbell_index = amdgpu_mes_get_doorbell_dw_offset_in_bar(adev,
-				process->doorbell_index, found);
+	*doorbell_index = amdgpu_doorbell_index_on_bar(adev, doorbells->bo, found);
 
 	return 0;
 }
 
-static void amdgpu_mes_queue_doorbell_free(struct amdgpu_device *adev,
+static void amdgpu_mes_kernel_doorbell_free(struct amdgpu_device *adev,
 					   struct amdgpu_mes_process *process,
 					   uint32_t doorbell_index)
 {
 	unsigned int old, doorbell_id;
+	struct amdgpu_doorbell_obj *doorbells = &adev->mes.kernel_doorbells;
 
-	doorbell_id = doorbell_index -
-		(process->doorbell_index *
-		 amdgpu_mes_doorbell_process_slice(adev)) / sizeof(u32);
+	/* Find the relative index of the doorbell in this object */
+	doorbell_id = doorbell_index - doorbells->start;
 	doorbell_id /= 2;
 
-	old = test_and_clear_bit(doorbell_id, process->doorbell_bitmap);
+	old = test_and_clear_bit(doorbell_id, doorbells->doorbell_bitmap);
 	WARN_ON(!old);
 }
 
 static int amdgpu_mes_doorbell_init(struct amdgpu_device *adev)
 {
-	size_t doorbell_start_offset;
-	size_t doorbell_aperture_size;
-	size_t doorbell_process_limit;
-	size_t aggregated_doorbell_start;
-	int i;
+	int i, r;
+	u32 agg_db_start_index, nbits;
+	struct amdgpu_doorbell_obj *mes_doorbells = &adev->mes.kernel_doorbells;
 
-	aggregated_doorbell_start = (adev->doorbell_index.max_assignment + 1) * sizeof(u32);
-	aggregated_doorbell_start =
-		roundup(aggregated_doorbell_start, PAGE_SIZE);
+		/* Allocated one page doorbells for MES kernel usages */
+	mes_doorbells->size = PAGE_SIZE;
 
-	doorbell_start_offset = aggregated_doorbell_start + PAGE_SIZE;
-	doorbell_start_offset =
-		roundup(doorbell_start_offset,
-			amdgpu_mes_doorbell_process_slice(adev));
+	nbits = DIV_ROUND_UP(mes_doorbells->size, sizeof(u32));
+	mes_doorbells->doorbell_bitmap = bitmap_zalloc(nbits, GFP_KERNEL);
+	if (!mes_doorbells->doorbell_bitmap) {
+		DRM_ERROR("Failed to allocate MES doorbell bitmap\n");
+		return -ENOMEM;
+	}
 
-	doorbell_aperture_size = adev->doorbell.size;
-	doorbell_aperture_size =
-			rounddown(doorbell_aperture_size,
-				  amdgpu_mes_doorbell_process_slice(adev));
+	r = amdgpu_doorbell_alloc_page(adev, mes_doorbells);
+	if (r) {
+		DRM_ERROR("Failed to create MES doorbell object\n, err=%d", r);
+		bitmap_free(mes_doorbells->doorbell_bitmap);
+		return r;
+	}
 
-	if (doorbell_aperture_size > doorbell_start_offset)
-		doorbell_process_limit =
-			(doorbell_aperture_size - doorbell_start_offset) /
-			amdgpu_mes_doorbell_process_slice(adev);
-	else
-		return -ENOSPC;
+	/* Get the absolute doorbell index for aggregated doobells */
+	agg_db_start_index = mes_doorbells->start;
+	for (i = 0; i < AMDGPU_MES_PRIORITY_NUM_LEVELS; i++) {
+		adev->mes.aggregated_doorbells[i] = agg_db_start_index + i;
+		set_bit(agg_db_start_index + i, mes_doorbells->doorbell_bitmap);
+	}
 
-	adev->mes.doorbell_id_offset = doorbell_start_offset / sizeof(u32);
-	adev->mes.max_doorbell_slices = doorbell_process_limit;
-
-	/* allocate Qword range for aggregated doorbell */
-	for (i = 0; i < AMDGPU_MES_PRIORITY_NUM_LEVELS; i++)
-		adev->mes.aggregated_doorbells[i] =
-			aggregated_doorbell_start / sizeof(u32) + i * 2;
-
-	DRM_INFO("max_doorbell_slices=%zu\n", doorbell_process_limit);
 	return 0;
+}
+
+static void amdgpu_mes_doorbell_free(struct amdgpu_device *adev)
+{
+	struct amdgpu_doorbell_obj *mes_doorbells = &adev->mes.kernel_doorbells;
+
+	bitmap_free(mes_doorbells->doorbell_bitmap);
+	amdgpu_doorbell_free_page(adev, mes_doorbells);
 }
 
 int amdgpu_mes_init(struct amdgpu_device *adev)
@@ -250,6 +248,7 @@ void amdgpu_mes_fini(struct amdgpu_device *adev)
 	amdgpu_device_wb_free(adev, adev->mes.sch_ctx_offs);
 	amdgpu_device_wb_free(adev, adev->mes.query_status_fence_offs);
 	amdgpu_device_wb_free(adev, adev->mes.read_val_offs);
+	amdgpu_mes_doorbell_free(adev);
 
 	idr_destroy(&adev->mes.pasid_idr);
 	idr_destroy(&adev->mes.gang_id_idr);
@@ -679,7 +678,7 @@ int amdgpu_mes_add_hw_queue(struct amdgpu_device *adev, int gang_id,
 	*queue_id = queue->queue_id = r;
 
 	/* allocate a doorbell index for the queue */
-	r = amdgpu_mes_queue_doorbell_get(adev, gang->process,
+	r = amdgpu_mes_kernel_doorbell_get(adev, gang->process,
 					  qprops->queue_type,
 					  &qprops->doorbell_off);
 	if (r)
@@ -737,7 +736,7 @@ int amdgpu_mes_add_hw_queue(struct amdgpu_device *adev, int gang_id,
 	return 0;
 
 clean_up_doorbell:
-	amdgpu_mes_queue_doorbell_free(adev, gang->process,
+	amdgpu_mes_kernel_doorbell_free(adev, gang->process,
 				       qprops->doorbell_off);
 clean_up_queue_id:
 	spin_lock_irqsave(&adev->mes.queue_id_lock, flags);
@@ -792,7 +791,7 @@ int amdgpu_mes_remove_hw_queue(struct amdgpu_device *adev, int queue_id)
 			  queue_id);
 
 	list_del(&queue->list);
-	amdgpu_mes_queue_doorbell_free(adev, gang->process,
+	amdgpu_mes_kernel_doorbell_free(adev, gang->process,
 				       queue->doorbell_off);
 	amdgpu_mes_unlock(&adev->mes);
 

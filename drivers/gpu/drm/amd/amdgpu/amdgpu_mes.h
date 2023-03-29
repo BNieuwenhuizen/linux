@@ -27,6 +27,7 @@
 #include "amdgpu_irq.h"
 #include "kgd_kfd_interface.h"
 #include "amdgpu_gfx.h"
+#include "amdgpu_doorbell.h"
 #include <linux/sched/mm.h>
 
 #define AMDGPU_MES_MAX_COMPUTE_PIPES        8
@@ -76,7 +77,6 @@ struct amdgpu_mes {
 	uint32_t			kiq_version;
 
 	uint32_t                        total_max_queue;
-	uint32_t                        doorbell_id_offset;
 	uint32_t                        max_doorbell_slices;
 
 	uint64_t                        default_process_quantum;
@@ -127,6 +127,9 @@ struct amdgpu_mes {
 	/* initialize kiq pipe */
 	int                             (*kiq_hw_init)(struct amdgpu_device *adev);
 	int                             (*kiq_hw_fini)(struct amdgpu_device *adev);
+
+	/* MES Kernel doorbells */
+	struct amdgpu_doorbell_obj	kernel_doorbells;
 
 	/* ip specific functions */
 	const struct amdgpu_mes_funcs   *funcs;
