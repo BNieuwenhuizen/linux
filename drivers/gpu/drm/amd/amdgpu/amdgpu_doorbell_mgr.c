@@ -160,6 +160,38 @@ int amdgpu_doorbell_alloc_page(struct amdgpu_device *adev,
 	return 0;
 }
 
+/**
+ * amdgpu_doorbell_create_kernel_doorbells - Create kernel doorbells for graphics
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * Creates doorbells for graphics driver
+ *
+ * returns 0 on success, error otherwise.
+ */
+int amdgpu_doorbell_create_kernel_doorbells(struct amdgpu_device *adev)
+{
+	int r;
+	struct amdgpu_doorbell_obj *kernel_doorbells = &adev->doorbell.kernel_doorbells;
+
+	kernel_doorbells->doorbell_bitmap = bitmap_zalloc(adev->doorbell.num_kernel_doorbells,
+							  GFP_KERNEL);
+	if (!kernel_doorbells->doorbell_bitmap) {
+		DRM_ERROR("Failed to create kernel doorbell bitmap\n");
+		return -ENOMEM;
+	}
+
+	kernel_doorbells->size = adev->doorbell.num_kernel_doorbells * sizeof(u32);
+	r = amdgpu_doorbell_alloc_page(adev, kernel_doorbells);
+	if (r) {
+		bitmap_free(kernel_doorbells->doorbell_bitmap);
+		DRM_ERROR("Failed to allocate kernel doorbells, err=%d\n", r);
+		return r;
+	}
+
+	return 0;
+}
+
 /*
  * GPU doorbell aperture helpers function.
  */
@@ -179,7 +211,6 @@ int amdgpu_device_doorbell_init(struct amdgpu_device *adev)
 		adev->doorbell.base = 0;
 		adev->doorbell.size = 0;
 		adev->doorbell.num_kernel_doorbells = 0;
-		adev->doorbell.ptr = NULL;
 		return 0;
 	}
 
@@ -208,12 +239,7 @@ int amdgpu_device_doorbell_init(struct amdgpu_device *adev)
 	if (adev->asic_type >= CHIP_VEGA10)
 		adev->doorbell.num_kernel_doorbells += 0x400;
 
-	adev->doorbell.ptr = ioremap(adev->doorbell.base,
-				     adev->doorbell.num_kernel_doorbells *
-				     sizeof(u32));
-	if (adev->doorbell.ptr == NULL)
-		return -ENOMEM;
-
+	adev->doorbell.ptr = ioremap(adev->doorbell.base, adev->doorbell.size);
 	return 0;
 }
 
@@ -226,6 +252,6 @@ int amdgpu_device_doorbell_init(struct amdgpu_device *adev)
  */
 void amdgpu_device_doorbell_fini(struct amdgpu_device *adev)
 {
-	iounmap(adev->doorbell.ptr);
-	adev->doorbell.ptr = NULL;
+	bitmap_free(adev->doorbell.kernel_doorbells.doorbell_bitmap);
+	amdgpu_doorbell_free_page(adev, &adev->doorbell.kernel_doorbells);
 }

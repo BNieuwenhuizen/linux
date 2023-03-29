@@ -49,10 +49,13 @@ struct amdgpu_doorbell {
 	/* doorbell mmio */
 	resource_size_t		base;
 	resource_size_t		size;
-	u32 __iomem		*ptr;
+	u32	__iomem		*ptr;
 
 	/* Number of doorbells reserved for amdgpu kernel driver */
 	u32 num_kernel_doorbells;
+
+	/* For kernel doorbell pages */
+	struct amdgpu_doorbell_obj kernel_doorbells;
 };
 
 /* Reserved doorbells for amdgpu (including multimedia).
@@ -368,6 +371,17 @@ void amdgpu_doorbell_free_page(struct amdgpu_device *adev,
  */
 int amdgpu_doorbell_alloc_page(struct amdgpu_device *adev,
 				struct amdgpu_doorbell_obj *db_obj);
+
+/**
+ * amdgpu_doorbell_create_kernel_doorbells - Create kernel doorbells for graphics
+ *
+ * @adev: amdgpu_device pointer
+ *
+ * Creates doorbells for graphics driver
+ *
+ * returns 0 on success, error otherwise.
+ */
+int amdgpu_doorbell_create_kernel_doorbells(struct amdgpu_device *adev);
 
 #define RDOORBELL32(index) amdgpu_mm_rdoorbell(adev, (index))
 #define WDOORBELL32(index, v) amdgpu_mm_wdoorbell(adev, (index), (v))
