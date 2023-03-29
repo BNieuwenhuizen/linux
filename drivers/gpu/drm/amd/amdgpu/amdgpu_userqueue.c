@@ -81,6 +81,12 @@ static int amdgpu_userqueue_create(struct drm_file *filp, union drm_amdgpu_userq
         goto free_queue;
     }
 
+    r = uq_mgr->userq_funcs[queue->queue_type]->mqd_create(uq_mgr, queue);
+    if (r) {
+        DRM_ERROR("Failed to create/map userqueue MQD\n");
+        goto free_queue;
+    }
+
     args->out.queue_id = queue->queue_id;
     args->out.flags = 0;
     mutex_unlock(&uq_mgr->userq_mutex);
@@ -105,6 +111,7 @@ static void amdgpu_userqueue_destroy(struct drm_file *filp, int queue_id)
     }
 
     mutex_lock(&uq_mgr->userq_mutex);
+    uq_mgr->userq_funcs[queue->queue_type]->mqd_destroy(uq_mgr, queue);
     amdgpu_userqueue_free_index(uq_mgr, queue->queue_id);
     mutex_unlock(&uq_mgr->userq_mutex);
     kfree(queue);
@@ -135,6 +142,19 @@ int amdgpu_userq_ioctl(struct drm_device *dev, void *data,
     return r;
 }
 
+extern const struct amdgpu_userq_funcs userq_gfx_v11_funcs;
+
+static void
+amdgpu_userqueue_setup_ip_funcs(struct amdgpu_userq_mgr *uq_mgr)
+{
+    int maj;
+    struct amdgpu_device *adev = uq_mgr->adev;
+    uint32_t version = adev->ip_versions[GC_HWIP][0];
+
+    maj = IP_VERSION_MAJ(version);
+    if (maj == 11)
+        uq_mgr->userq_funcs[AMDGPU_HW_IP_GFX] = &userq_gfx_v11_funcs;
+}
 
 int amdgpu_userq_mgr_init(struct amdgpu_userq_mgr *userq_mgr, struct amdgpu_device *adev)
 {
@@ -142,6 +162,7 @@ int amdgpu_userq_mgr_init(struct amdgpu_userq_mgr *userq_mgr, struct amdgpu_devi
     idr_init_base(&userq_mgr->userq_idr, 1);
     userq_mgr->adev = adev;
 
+    amdgpu_userqueue_setup_ip_funcs(userq_mgr);
     return 0;
 }
 

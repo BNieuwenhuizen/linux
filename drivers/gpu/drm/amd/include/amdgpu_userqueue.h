@@ -27,6 +27,12 @@
 #include "amdgpu.h"
 #define AMDGPU_MAX_USERQ 512
 
+struct amdgpu_userq_ctx_space {
+	struct amdgpu_bo *obj;
+	uint64_t gpu_addr;
+	void *cpu_ptr;
+};
+
 struct amdgpu_usermode_queue {
 	int queue_id;
 	int queue_type;
@@ -35,6 +41,7 @@ struct amdgpu_usermode_queue {
 	struct amdgpu_vm *vm;
 	struct amdgpu_userq_mgr *userq_mgr;
 	struct amdgpu_mqd_prop userq_prop;
+	struct amdgpu_userq_ctx_space mqd;
 };
 
 struct amdgpu_userq_funcs {
