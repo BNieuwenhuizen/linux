@@ -245,6 +245,7 @@ struct amdgpu_ring {
 	unsigned		ring_size;
 	unsigned		max_dw;
 	int			count_dw;
+	unsigned		max_ibs;
 	uint64_t		gpu_addr;
 	uint64_t		ptr_mask;
 	uint32_t		buf_mask;

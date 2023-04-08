@@ -323,6 +323,7 @@ int amdgpu_ring_init(struct amdgpu_device *adev, struct amdgpu_ring *ring,
 
 	ring->max_dw = max_dw;
 	ring->hw_prio = hw_prio;
+	ring->max_ibs = (max_dw - ring->funcs->emit_frame_size) / ring->funcs->emit_ib_size;
 
 	if (!ring->no_scheduler) {
 		hw_ip = ring->funcs->type;

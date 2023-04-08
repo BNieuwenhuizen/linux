@@ -113,6 +113,14 @@ int amdgpu_job_alloc(struct amdgpu_device *adev, struct amdgpu_vm *vm,
 	if (!entity)
 		return 0;
 
+	if (entity->rq && entity->rq->sched) {
+		struct amdgpu_ring *ring = to_amdgpu_ring(entity->rq->sched);
+		if (num_ibs > ring->max_ibs) {
+			DRM_DEBUG("Rejected a submission with too many IBs");
+			return -EINVAL;
+		}
+	}
+
 	return drm_sched_job_init(&(*job)->base, entity, owner);
 }
 
