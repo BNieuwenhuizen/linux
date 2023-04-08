@@ -360,7 +360,7 @@ static int amdgpu_firmware_info(struct drm_amdgpu_info_firmware *fw_info,
 
 static int amdgpu_hw_ip_info(struct amdgpu_device *adev,
 			     struct drm_amdgpu_info *info,
-			     struct drm_amdgpu_info_hw_ip *result)
+			     struct drm_amdgpu_info_hw_ip2 *result)
 {
 	uint32_t ib_start_alignment = 0;
 	uint32_t ib_size_alignment = 0;
@@ -431,6 +431,7 @@ static int amdgpu_hw_ip_info(struct amdgpu_device *adev,
 		return -EINVAL;
 	}
 
+	result->max_ibs = UINT_MAX;
 	for (i = 0; i < adev->num_rings; ++i) {
 		/* Note that this uses that ring types alias the equivalent
 		 * HW IP exposes to userspace.
@@ -438,6 +439,8 @@ static int amdgpu_hw_ip_info(struct amdgpu_device *adev,
 		if (adev->rings[i]->funcs->type == info->query_hw_ip.type &&
 		    adev->rings[i]->sched.ready) {
 			++num_rings;
+			result->max_ibs = min(result->max_ibs,
+					      adev->rings[i]->max_ibs);
 		}
 	}
 
@@ -536,7 +539,7 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		}
 		return copy_to_user(out, &ui32, min(size, 4u)) ? -EFAULT : 0;
 	case AMDGPU_INFO_HW_IP_INFO: {
-		struct drm_amdgpu_info_hw_ip ip = {};
+		struct drm_amdgpu_info_hw_ip2 ip = {};
 		int ret;
 
 		ret = amdgpu_hw_ip_info(adev, info, &ip);

@@ -1128,6 +1128,9 @@ struct drm_amdgpu_info_device {
 	__u32 enabled_rb_pipes_mask_hi;
 };
 
+/* The size of this struct cannot be increased for compatibility reasons, use
+ * struct drm_amdgpu_info_hw_ip2 instead.
+ */
 struct drm_amdgpu_info_hw_ip {
 	/** Version of h/w IP */
 	__u32  hw_ip_version_major;
@@ -1142,6 +1145,32 @@ struct drm_amdgpu_info_hw_ip {
 	__u32  available_rings;
 	/** version info: bits 23:16 major, 15:8 minor, 7:0 revision */
 	__u32  ip_discovery_version;
+};
+
+/* The prefix fields of this are intentionally the same as those of
+ * struct drm_amdgpu_info_hw_ip. The struct has a v2 to resolve a lack of
+ * versioning on the libdrm_amdgpu side.
+ */
+struct drm_amdgpu_info_hw_ip2 {
+	/** Version of h/w IP */
+	__u32  hw_ip_version_major;
+	__u32  hw_ip_version_minor;
+	/** Capabilities */
+	__u64  capabilities_flags;
+	/** command buffer address start alignment*/
+	__u32  ib_start_alignment;
+	/** command buffer size alignment*/
+	__u32  ib_size_alignment;
+	/** Bitmask of available rings. Bit 0 means ring 0, etc. */
+	__u32  available_rings;
+	/** version info: bits 23:16 major, 15:8 minor, 7:0 revision */
+	__u32  ip_discovery_version;
+	/** The maximum number of IBs one can submit in a single submission
+	 * ioctl. (When using gang submit: this is per IP type)
+	 */
+	__u32  max_ibs;
+	/** padding to 64bit for arch differences */
+	__u32  pad;
 };
 
 struct drm_amdgpu_info_num_handles {
