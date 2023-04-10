@@ -223,6 +223,19 @@ free_queue:
     return r;
 }
 
+static int amdgpu_userqueue_release(int queue_id, void *ptr, void *data)
+{
+    struct amdgpu_userq_mgr *uq_mgr = data;
+    struct amdgpu_usermode_queue *queue = ptr;
+
+    mutex_lock(&uq_mgr->userq_mutex);
+    uq_mgr->userq_funcs[queue->queue_type]->mqd_destroy(uq_mgr, queue);
+    amdgpu_userqueue_free_index(uq_mgr, queue->queue_id);
+    mutex_unlock(&uq_mgr->userq_mutex);
+    kfree(queue);
+    return 0;
+}
+
 static void amdgpu_userqueue_destroy(struct drm_file *filp, int queue_id)
 {
     struct amdgpu_fpriv *fpriv = filp->driver_priv;
@@ -235,11 +248,7 @@ static void amdgpu_userqueue_destroy(struct drm_file *filp, int queue_id)
         return;
     }
 
-    mutex_lock(&uq_mgr->userq_mutex);
-    uq_mgr->userq_funcs[queue->queue_type]->mqd_destroy(uq_mgr, queue);
-    amdgpu_userqueue_free_index(uq_mgr, queue->queue_id);
-    mutex_unlock(&uq_mgr->userq_mutex);
-    kfree(queue);
+    amdgpu_userqueue_release(queue_id, queue, uq_mgr);
 }
 
 int amdgpu_userq_ioctl(struct drm_device *dev, void *data,
@@ -293,6 +302,8 @@ int amdgpu_userq_mgr_init(struct amdgpu_userq_mgr *userq_mgr, struct amdgpu_devi
 
 void amdgpu_userq_mgr_fini(struct amdgpu_userq_mgr *userq_mgr)
 {
+    idr_for_each(&userq_mgr->userq_idr,
+                 &amdgpu_userqueue_release, userq_mgr);
     idr_destroy(&userq_mgr->userq_idr);
     mutex_destroy(&userq_mgr->userq_mutex);
 }
