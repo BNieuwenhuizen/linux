@@ -50,6 +50,25 @@
  */
 
 /**
+ * amdgpu_ring_max_ibs - Return max IBs that fit in a single submission.
+ *
+ * @type: ring type for which to return the limit.
+ */
+unsigned int amdgpu_ring_max_ibs(enum amdgpu_ring_type type)
+{
+	switch(type) {
+		case AMDGPU_RING_TYPE_GFX:
+		case AMDGPU_RING_TYPE_COMPUTE:
+			/* gfx/compute are often used more extensively and radv
+			 * has historically assumed the limit was 192.
+			 */
+			return 192;
+		default:
+			return 50;
+	}
+}
+
+/**
  * amdgpu_ring_alloc - allocate space on the ring buffer
  *
  * @ring: amdgpu_ring structure holding ring information
@@ -182,6 +201,7 @@ int amdgpu_ring_init(struct amdgpu_device *adev, struct amdgpu_ring *ring,
 	int sched_hw_submission = amdgpu_sched_hw_submission;
 	u32 *num_sched;
 	u32 hw_ip;
+	unsigned int max_ibs_dw;
 
 	/* Set the hw submission limit higher for KIQ because
 	 * it's used for a number of gfx/compute tasks by both
@@ -289,6 +309,11 @@ int amdgpu_ring_init(struct amdgpu_device *adev, struct amdgpu_ring *ring,
 		dev_err(adev->dev, "failed initializing fences (%d).\n", r);
 		return r;
 	}
+
+	max_ibs_dw = ring->funcs->emit_frame_size +
+	             amdgpu_ring_max_ibs(ring->funcs->type) * ring->funcs->emit_ib_size;
+	max_ibs_dw = (max_ibs_dw + ring->funcs->align_mask) & ~ring->funcs->align_mask;
+	max_dw = max(max_dw, max_ibs_dw);
 
 	ring->ring_size = roundup_pow_of_two(max_dw * 4 * sched_hw_submission);
 
