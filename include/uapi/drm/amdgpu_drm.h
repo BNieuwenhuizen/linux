@@ -242,6 +242,11 @@ union drm_amdgpu_bo_list {
 #define AMDGPU_CTX_OP_GET_STABLE_PSTATE	5
 #define AMDGPU_CTX_OP_SET_STABLE_PSTATE	6
 
+#define AMDGPU_CTX_ALLOC_FLAGS_MASK       0x1
+/* Disable implicit sync on BOs wrt other
+ * submissions. */
+#define AMDGPU_CTX_ALLOC_NO_IMPLICIT_SYNC 1
+
 /* GPU reset status */
 #define AMDGPU_CTX_NO_RESET		0
 /* this the context caused it */
