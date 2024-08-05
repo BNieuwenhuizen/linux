@@ -58,6 +58,9 @@ struct amdgpu_ctx {
 	unsigned long			ras_counter_ue;
 	uint32_t			stable_pstate;
 	struct amdgpu_ctx_mgr		*ctx_mgr;
+
+	/* Disable implicit sync on submissions made through this context. */
+	bool				disable_implicit_sync;
 };
 
 struct amdgpu_ctx_mgr {

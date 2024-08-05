@@ -318,7 +318,8 @@ static int amdgpu_ctx_get_stable_pstate(struct amdgpu_ctx *ctx,
 }
 
 static int amdgpu_ctx_init(struct amdgpu_ctx_mgr *mgr, int32_t priority,
-			   struct drm_file *filp, struct amdgpu_ctx *ctx)
+			   uint32_t flags, struct drm_file *filp,
+			   struct amdgpu_ctx *ctx)
 {
 	struct amdgpu_fpriv *fpriv = filp->driver_priv;
 	u32 current_stable_pstate;
@@ -339,6 +340,7 @@ static int amdgpu_ctx_init(struct amdgpu_ctx_mgr *mgr, int32_t priority,
 	ctx->generation = amdgpu_vm_generation(mgr->adev, &fpriv->vm);
 	ctx->init_priority = priority;
 	ctx->override_priority = AMDGPU_CTX_PRIORITY_UNSET;
+	ctx->disable_implicit_sync = flags & AMDGPU_CTX_ALLOC_NO_IMPLICIT_SYNC;
 
 	r = amdgpu_ctx_get_stable_pstate(ctx, &current_stable_pstate);
 	if (r)
@@ -474,6 +476,7 @@ static int amdgpu_ctx_alloc(struct amdgpu_device *adev,
 			    struct amdgpu_fpriv *fpriv,
 			    struct drm_file *filp,
 			    int32_t priority,
+			    uint32_t flags,
 			    uint32_t *id)
 {
 	struct amdgpu_ctx_mgr *mgr = &fpriv->ctx_mgr;
@@ -493,7 +496,7 @@ static int amdgpu_ctx_alloc(struct amdgpu_device *adev,
 	}
 
 	*id = (uint32_t)r;
-	r = amdgpu_ctx_init(mgr, priority, filp, ctx);
+	r = amdgpu_ctx_init(mgr, priority, flags, filp, ctx);
 	if (r) {
 		idr_remove(&mgr->ctx_handles, *id);
 		*id = 0;
@@ -685,9 +688,10 @@ int amdgpu_ctx_ioctl(struct drm_device *dev, void *data,
 
 	switch (args->in.op) {
 	case AMDGPU_CTX_OP_ALLOC_CTX:
-		if (args->in.flags)
+		if (args->in.flags & ~AMDGPU_CTX_ALLOC_FLAGS_MASK)
 			return -EINVAL;
-		r = amdgpu_ctx_alloc(adev, fpriv, filp, priority, &id);
+		r = amdgpu_ctx_alloc(adev, fpriv, filp, priority,
+				     args->in.flags, &id);
 		args->out.alloc.ctx_id = id;
 		break;
 	case AMDGPU_CTX_OP_FREE_CTX:
