@@ -1307,7 +1307,8 @@ int amdgpu_vm_bo_update(struct amdgpu_device *adev, struct amdgpu_bo_va *bo_va,
 		 * unmapping.
 		 */
 		r = amdgpu_sync_resv(adev, &sync, vm->root.bo->tbo.base.resv,
-				     AMDGPU_SYNC_EQ_OWNER, vm);
+				     DMA_RESV_USAGE_READ, AMDGPU_SYNC_EQ_OWNER,
+				     vm);
 		if (r)
 			goto error_free;
 		if (bo) {
@@ -1339,7 +1340,8 @@ int amdgpu_vm_bo_update(struct amdgpu_device *adev, struct amdgpu_bo_va *bo_va,
 
 		/* Implicitly sync to moving fences before mapping anything */
 		r = amdgpu_sync_resv(adev, &sync, bo->tbo.base.resv,
-				     AMDGPU_SYNC_EXPLICIT, vm);
+				     DMA_RESV_USAGE_READ, AMDGPU_SYNC_EXPLICIT,
+				     vm);
 		if (r)
 			goto error_free;
 	}
@@ -1593,7 +1595,7 @@ int amdgpu_vm_clear_freed(struct amdgpu_device *adev,
 	 */
 	amdgpu_sync_create(&sync);
 	r = amdgpu_sync_resv(adev, &sync, vm->root.bo->tbo.base.resv,
-			     AMDGPU_SYNC_EQ_OWNER, vm);
+			     DMA_RESV_USAGE_READ, AMDGPU_SYNC_EQ_OWNER, vm);
 	if (r)
 		goto error_free;
 
