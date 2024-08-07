@@ -50,6 +50,7 @@ struct amdgpu_cs_parser {
 	struct amdgpu_device	*adev;
 	struct drm_file		*filp;
 	struct amdgpu_ctx	*ctx;
+	u32			flags;
 
 	/* chunks */
 	unsigned		nchunks;

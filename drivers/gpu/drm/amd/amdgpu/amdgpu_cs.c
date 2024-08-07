@@ -49,6 +49,9 @@
 #define AMDGPU_GFX_SDMA_IB_PACKET_SIZE_MAX_DW	0xFFFFF
 #define AMDGPU_MM_IB_PACKET_SIZE_MAX_DW	0x7FFFF0
 
+/* All flags accepted in drm_amdgpu_cs_in.flags */
+#define AMDGPU_CS_FLAGS_MASK	AMDGPU_CS_NO_IMPLICIT_SYNC
+
 static u32 amdgpu_cs_ib_packet_size_max_dw(enum amdgpu_ring_type type)
 {
 	switch (type) {
@@ -188,8 +191,10 @@ static int amdgpu_cs_pass1(struct amdgpu_cs_parser *p,
 	int ret;
 	int i;
 
-	if (cs->in.flags)
+	if (cs->in.flags & ~AMDGPU_CS_FLAGS_MASK)
 		return -EINVAL;
+
+	p->flags = cs->in.flags;
 
 	chunk_array = memdup_array_user(u64_to_user_ptr(cs->in.chunks),
 					cs->in.num_chunks,
@@ -1220,16 +1225,19 @@ static int amdgpu_cs_sync_rings(struct amdgpu_cs_parser *p)
 	}
 
 	drm_exec_for_each_locked_object(&p->exec, obj) {
+		/* Implicitly sync only to KERNEL, WRITE and READ */
+		enum dma_resv_usage usage = DMA_RESV_USAGE_READ;
 		struct amdgpu_bo *bo = gem_to_amdgpu_bo(obj);
 
 		struct dma_resv *resv = bo->tbo.base.resv;
 		enum amdgpu_sync_mode sync_mode;
 
+		if (p->flags & AMDGPU_CS_NO_IMPLICIT_SYNC)
+			usage = DMA_RESV_USAGE_KERNEL;
+
 		sync_mode = amdgpu_bo_explicit_sync(bo) ?
 			AMDGPU_SYNC_EXPLICIT : AMDGPU_SYNC_NE_OWNER;
-		/* Implicitly sync only to KERNEL, WRITE and READ */
-		r = amdgpu_sync_resv(p->adev, &p->sync, resv,
-				     DMA_RESV_USAGE_READ, sync_mode,
+		r = amdgpu_sync_resv(p->adev, &p->sync, resv, usage, sync_mode,
 				     &fpriv->vm);
 		if (r)
 			return r;
@@ -1341,8 +1349,22 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 
 	p->fence = dma_fence_get(&leader->base.s_fence->finished);
 	drm_exec_for_each_locked_object(&p->exec, gobj) {
+		enum dma_resv_usage read_usage = DMA_RESV_USAGE_READ;
+		enum dma_resv_usage write_usage = DMA_RESV_USAGE_WRITE;
 
 		ttm_bo_move_to_lru_tail_unlocked(&gem_to_amdgpu_bo(gobj)->tbo);
+
+		/*
+		 * Keep READ/WRITE on the root PD resv:
+		 * amdgpu_vm_bo_update(clear=true) only waits on the VM root PD
+		 * resv with read and should still sync to avoid unmapping
+		 * before the job finishes.
+		 */
+		if ((p->flags & AMDGPU_CS_NO_IMPLICIT_SYNC) &&
+		    gobj->resv != vm->root.bo->tbo.base.resv) {
+			read_usage = DMA_RESV_USAGE_BOOKKEEP;
+			write_usage = DMA_RESV_USAGE_BOOKKEEP;
+		}
 
 		/* Everybody except for the gang leader uses READ */
 		for (i = 0; i < p->gang_size; ++i) {
@@ -1351,11 +1373,11 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 
 			dma_resv_add_fence(gobj->resv,
 					   &p->jobs[i]->base.s_fence->finished,
-					   DMA_RESV_USAGE_READ);
+					   read_usage);
 		}
 
 		/* The gang leader as remembered as writer */
-		dma_resv_add_fence(gobj->resv, p->fence, DMA_RESV_USAGE_WRITE);
+		dma_resv_add_fence(gobj->resv, p->fence, write_usage);
 	}
 
 	seq = amdgpu_ctx_add_fence(p->ctx, p->entities[p->gang_leader_idx],
